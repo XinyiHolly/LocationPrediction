@@ -1,0 +1,722 @@
+package org.social.spatialcluster;
+
+import java.awt.Point;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Vector;
+
+import org.social.postgresql.RelationalDBUtility;
+import org.tweet.StPoint;
+import org.tweet.TweetPoint;
+import org.tweet.TweetRecord;
+import org.tweet.TwitterUser;
+import org.tweet.location.ClusteredLocation;
+
+import com.vividsolutions.jts.geom.Coordinate;
+
+import dbscan.Utility;
+import dbscan.VDbscan;
+import dbscan.stDbscanNew;
+
+public class STDBSCANClusterNew {
+	public ArrayList<ClusteredLocation> locations = new ArrayList<ClusteredLocation>();
+	public ArrayList<TweetRecord> tweets;
+	public static Vector<List> resultList = new Vector<List>();
+	//public static Vector<List> resultList = new Vector<List>();
+	public ArrayList<Integer> tweetsize = new ArrayList<Integer>();
+	public int threshold = 20;
+	
+	public STDBSCANClusterNew (long user_id, String dbName, String tableName)
+	{
+		ReadUserTweetPoints(user_id, dbName, tableName);
+		GetClusters();
+		SplitListToSublist();
+		GetClusteredLocations();
+	}
+	
+	public void ReadUserTweetPoints(long user_id, String dbase, String tableName)
+	{
+		RelationalDBUtility db = new RelationalDBUtility(dbase);
+		tweets = this.readTweetDataFromPostgresql(db, user_id, 900913, tableName);
+		
+		// Added by Guiming @ 2016-07-05
+		//WriteSelectedTweetsToCSV(tweets, "C:/Users/sheen/Box Sync/project/STDBSCAN/STDBSCANtweets.csv", true);
+	}
+	
+	public void GetClusters()
+	{		
+		// parameters in STDBSCAN, will overwrite the default values in class stDbscan
+		resultList.clear();	
+		/*stDbscanNew.minpt = (int)Math.log(tweets.size()); // minimum points
+		// get Eps
+		stDbscanNew.e = 1500; // search radius 
+		stDbscanNew.et = 5.0; // time difference in minutes
+		// get difference between average non-spatial value and the new one*/
+		stDbscanNew.d = 30; // minimum distance
+		
+		// apply STDBSCAN						
+		stDbscanNew.pointList.clear();			
+		for(int j = 0; j < tweets.size(); j++)
+		{
+			stDbscanNew.pointList.add(tweets.get(j));							    									
+		}
+		SetEps();
+		SetEt();
+		try {
+			stDbscanNew.applyStDbscan();
+		} catch (NumberFormatException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		int num = 0;
+		boolean flag = false; 
+		for (int i = 0; i < stDbscanNew.resultList.size(); i++)
+		{
+			List<TweetRecord> cluster = stDbscanNew.resultList.get(i);
+			if(cluster.size() < threshold) // used to control if a cluster is a representative cluster
+				continue;
+			resultList.add(cluster);				
+			System.out.print("cluster " + num +  " [" + cluster.size() + "]\n");
+			num ++;
+			flag = true;
+		}			
+		if (flag) {
+			
+			// Added by Guiming @ 2016-07-11
+			double Eps = Utility.determineEps(stDbscanNew.resultList, stDbscanNew.minpt, threshold);
+			System.out.println("Eps: " + Eps);
+			
+			double TEps = Utility.determineTEps(stDbscanNew.resultList, stDbscanNew.minpt, threshold);
+			System.out.println("TEps: " + TEps);
+			
+			System.out.println();
+			
+			/*// Added by Guiming @ 2016-07-10
+			WriteClusteredTweetsToCSV(stpoints, "C:/Users/sheen/OneDrive/project/WorldWind/DBSCAN/DBSCANclusteredtweets.csv", true);*/
+		}				
+		int clustersize = resultList.size();
+		System.out.println("total cluster size : " + clustersize);
+		System.out.println();
+		System.out.println();
+	}
+	
+	public void SetEps()
+	{
+		ArrayList<TweetRecord> points = stDbscanNew.pointList;
+		
+		//get average distance from point(i) to other points
+		double sumDistance = 0;
+		for (int i = 0; i < points.size(); i++) {
+			double averageDistance = 0.0;
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				averageDistance += Math.sqrt((points.get(i).getX() - points.get(j).getX()) * (points.get(i).getX() - points.get(j).getX())
+						+ (points.get(i).getY() - points.get(j).getY()) * (points.get(i).getY() - points.get(j).getY()));
+			}
+			averageDistance = averageDistance / (points.size() - 1);
+			//points.get(i).setEps(averageDistance);			
+			sumDistance += averageDistance;
+		}
+		
+		double avgd = sumDistance / points.size();
+		//System.out.println(avgd);
+		List<Integer> kArray = new ArrayList<Integer>();
+		for (int i = 0; i < points.size(); i++) {
+			int k = 0;
+			double eps = Double.MIN_VALUE;
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				double radius = Math.sqrt((points.get(i).getX() - points.get(j).getX()) * (points.get(i).getX() - points.get(j).getX())
+						+ (points.get(i).getY() - points.get(j).getY()) * (points.get(i).getY() - points.get(j).getY()));
+				if (radius < avgd) {
+					k++;
+					if (radius > eps)
+						eps = radius;
+				}
+			}
+			k = k - 1;
+			kArray.add(k);
+			//points.get(i).setK(k);
+			//points.get(i).setEps(0);
+			//System.out.println(eps);
+		}
+		
+		// find mode of k values and calculate eps
+		//System.out.println(kArray.toString());
+		int k = VDbscan.getMode(kArray);
+		for(int i = 0; i < points.size(); i++) {
+			List<Double> distances = new ArrayList<Double>();
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				double radius = Math.sqrt((points.get(i).getX() - points.get(j).getX()) * (points.get(i).getX() - points.get(j).getX())
+						+ (points.get(i).getY() - points.get(j).getY()) * (points.get(i).getY() - points.get(j).getY()));
+				if (radius < avgd) {
+					distances.add(radius);
+				}
+			}
+			Collections.sort(distances, new SortbyKDistance());
+			//System.out.println(distances.get(k));
+			if (distances.size() < (k + 1))
+				points.get(i).setEps(distances.get(distances.size() - 1));
+			else
+				points.get(i).setEps(distances.get(k));
+		}
+		
+		Collections.sort(points, new SortbyEpsDistance());
+		//for (int i = 0; i < points.size(); i++) {
+		//	System.out.println(points.get(i).getEps());
+		//}
+		
+		// find eps[i] and assign them to points
+		/*int start = 0;
+		int end = 0;
+		double curDifference = 0.0;
+		double averageDifference = Double.MIN_VALUE;
+		for (int i = 0; i < points.size() - 1; i++) {			
+			curDifference = points.get(i + 1).getEps() - points.get(i).getEps();
+			if (i == 0)
+				averageDifference = Math.abs(curDifference);
+			
+			if ((Math.abs(curDifference) > 3 * averageDifference && averageDifference > 0.0) || (i == points.size() - 2)) {
+				System.out.println(Double.toString(curDifference) + " " + Double.toString(averageDifference)) ;
+				if (i == points.size() - 2)
+					end++;
+				for (; start < end; start++) {
+					points.get(start).setEps(points.get(i).getEps());
+				}
+				
+				start++;
+				if (i < points.size() - 2)
+					averageDifference = Math.abs(points.get(start + 1).getEps() - points.get(start).getEps());
+
+			} else {
+				if (Math.abs(curDifference) > averageDifference)
+					averageDifference = Math.abs(curDifference);
+			}				
+
+			end++;
+		}*/
+		
+		// Test Eps
+		stDbscanNew.e = points.get(0).getEps();
+	}
+	
+	public void SetEt()
+	{
+		ArrayList<TweetRecord> points = stDbscanNew.pointList;
+		
+		//get average distance from point(i) to other points
+		double sumTDistance = 0;
+		for (int i = 0; i < points.size(); i++) {
+			double averageTDistance = 0.0;
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				averageTDistance += Math.abs(points.get(i).getMinuteTime()-points.get(j).getMinuteTime());
+			}
+			averageTDistance = averageTDistance / (points.size() - 1);
+			//points.get(i).setEps(averageDistance);			
+			sumTDistance += averageTDistance;
+		}
+		
+		double avgd = sumTDistance / points.size();
+		//System.out.println(avgd);
+		List<Integer> kArray = new ArrayList<Integer>();
+		for (int i = 0; i < points.size(); i++) {
+			int k = 0;
+			double et = Double.MIN_VALUE;
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				double radius = Math.abs(points.get(i).getMinuteTime()-points.get(j).getMinuteTime());
+				if (radius < avgd) {
+					k++;
+					if (radius > et)
+						et = radius;
+				}
+			}
+			k = k - 1;
+			kArray.add(k);
+			//points.get(i).setK(k);
+			//points.get(i).setEps(0);
+			//System.out.println(eps);
+		}
+		
+		// find mode of k values and calculate eps
+		//System.out.println(kArray.toString());
+		int k = VDbscan.getMode(kArray);
+		for(int i = 0; i < points.size(); i++) {
+			List<Double> distances = new ArrayList<Double>();
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				double radius = Math.abs(points.get(i).getMinuteTime()-points.get(j).getMinuteTime());
+				if (radius < avgd) {
+					distances.add(radius);
+				}
+			}
+			Collections.sort(distances, new SortbyKDistance());
+			//System.out.println(distances.get(k));
+			if (distances.size() < (k + 1))
+				points.get(i).setEt(distances.get(distances.size() - 1));
+			else
+				points.get(i).setEt(distances.get(k));
+		}
+		
+		Collections.sort(points, new SortbyEtDistance());
+		//for (int i = 0; i < points.size(); i++) {
+		//	System.out.println(points.get(i).getEps());
+		//}
+		
+		// find eps[i] and assign them to points
+		/*int start = 0;
+		int end = 0;
+		double curDifference = 0.0;
+		double averageDifference = Double.MIN_VALUE;
+		for (int i = 0; i < points.size() - 1; i++) {			
+			curDifference = points.get(i + 1).getEt() - points.get(i).getEt();
+			if (i == 0)
+				averageDifference = Math.abs(curDifference);
+			
+			if ((Math.abs(curDifference) > 3 * averageDifference && averageDifference > 0.0) || (i == points.size() - 2)) {
+				System.out.println(Double.toString(curDifference) + " " + Double.toString(averageDifference)) ;
+				if (i == points.size() - 2)
+					end++;
+				for (; start < end; start++) {
+					points.get(start).setEt(points.get(i).getEt());
+				}
+				
+				start++;
+				if (i < points.size() - 2)
+					averageDifference = Math.abs(points.get(start + 1).getEt() - points.get(start).getEt());
+
+			} else {
+				if (Math.abs(curDifference) > averageDifference)
+					averageDifference = Math.abs(curDifference);
+			}				
+
+			end++;
+		}*/
+		
+		// Test Eps
+		stDbscanNew.et = points.get(0).getEt();
+	}
+
+	public TweetPoint GetGeoCoordinate(List<TweetRecord> points, double x, double y)
+	{
+		TweetPoint pt = new TweetPoint();
+		for(int i = 0; i < points.size(); i++)
+		{
+			if(Math.abs(x - points.get(i).x) < 1 && Math.abs(y - points.get(i).y) < 1)
+			{
+				pt.latitude = points.get(i).getLatitude();
+				pt.longitude = points.get(i).getLongitude();
+			}
+		}
+		return pt;
+	}
+
+	private static boolean rightTurn(Point a, Point b, Point c)
+	{
+		return (b.x - a.x)*(c.y - a.y) - (b.y - a.y)*(c.x - a.x) > 0;
+	}
+
+	public class XCompare implements Comparator<Point>
+	{
+		@Override
+		public int compare(Point o1, Point o2) 
+		{
+			return (new Integer(o1.x)).compareTo(new Integer(o2.x));
+		}
+	}
+
+	public static String query  = null;
+	@SuppressWarnings("deprecation")
+	public ArrayList<TweetRecord> readTweetDataFromPostgresql(RelationalDBUtility db, long user_id, int srid, String tableName)
+	{
+		ArrayList<TweetRecord> tweetRecords = new ArrayList<TweetRecord>();
+		String query = "select ST_X(ST_Transform(geom, " + srid + ")) as x, ST_Y(ST_Transform(geom, " + srid 
+				       + ")) as y, ST_X(geom) as lon, ST_Y(geom) as lat, create_at from " + tableName
+				       + " where user_id = " + user_id +" and geom is not null" 
+			           ;
+		query += " order by create_at";
+		try {
+		    ResultSet rs = db.queryDB(query);
+		    boolean b = rs.next();
+			while (rs.next()){
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");
+
+				double lat = rs.getDouble("lat");
+				double lon = rs.getDouble("lon");
+
+				TweetRecord record = new TweetRecord(x, y, 0.0);				
+				String create_at = (String) rs.getString("create_at");
+				SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+				Date tweetTime = null;
+				try {
+					tweetTime = df.parse(create_at);	
+					
+					// Added by Guiming @ 2016-07-07
+					// only keep tweets on weekdays
+					if(tweetTime.getDay()==0 || tweetTime.getDay()==6)
+						continue;				
+					
+					//keep tweets on weekends
+					//if(tweetTime.getDay()!=0 && tweetTime.getDay()!=6)
+					//	continue;
+					
+					// Added by Xinyi @ 2017-06-19
+					// only keep tweets on certain years
+					int year = tweetTime.getYear();
+					if(tweetTime.getYear() == 113 || tweetTime.getYear() == 114)
+						continue;
+					
+				} catch (ParseException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+
+				record.day = tweetTime.getDate();
+				record.month = 1 + tweetTime.getMonth();
+				record.year = 1900 + tweetTime.getYear();
+				record.hour = tweetTime.getHours();
+				record.minute = tweetTime.getMinutes();
+				//double time = record.hour + record.minute / 60.0;
+				record.setTime(tweetTime.getTime());
+
+				record.setLatLon(lat, lon);
+
+				tweetRecords.add(record);
+			}
+
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return tweetRecords;
+	}
+
+	public ArrayList<TweetRecord> getTweetDataFromPostgresql(RelationalDBUtility db, String user_account, int srid, String tableName)
+	{
+		ArrayList<TweetRecord> tweetRecords = new ArrayList<TweetRecord>();
+		String query = "select ST_X(ST_Transform(geom, " + srid + ")) as x, ST_Y(ST_Transform(geom, " + srid 
+				+ ")) as y, ST_X(geom) as lon, ST_Y(geom) as lat, day, month, year, hour, minute, dow from " + tableName
+				+ " where user_account = '" + user_account +"' and geom is not null" ;
+
+		query += " order by create_at" ;
+
+		try {
+
+			ResultSet rs = db.queryDB(query);
+			while (rs.next()){
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");
+				double year = rs.getDouble("year"); 
+				double month = rs.getDouble("month");
+				double day = rs.getDouble("day");
+				double hour = rs.getDouble("hour");
+				double minute = rs.getDouble("minute");
+				double lat = rs.getDouble("lat");
+				double lon = rs.getDouble("lon");
+				int w = rs.getInt("dow");
+				TweetRecord record = new TweetRecord(x, y, day, month, year, hour, minute);
+				record.setLatLon(lat, lon);
+				tweetRecords.add(record);
+			}
+
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return tweetRecords;
+	}	
+	
+	// Added by Xinyi @ 2016-12-04
+	/*get user data from database*/
+	public ArrayList<TwitterUser> getUserDataFromPostgresql(RelationalDBUtility db, String user_account, int srid, String tableName)
+	{
+		ArrayList<TwitterUser> twitterUsers = new ArrayList<TwitterUser>();
+		String query = "select ST_X(ST_Transform(geom, " + srid + ")) as x, ST_Y(ST_Transform(geom, " + srid 
+				+ ")) as y, ST_X(geom) as lon, ST_Y(geom) as lat, day, month, year, hour, minute, dow from " + tableName
+				+ " where user_account = '" + user_account +"' and geom is not null" ;
+
+		query += " order by create_at" ;
+
+		try {
+
+			ResultSet rs = db.queryDB(query);
+			while (rs.next()){
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");
+				String account = rs.getString("account"); 
+				String name = rs.getString("name");
+				String description = rs.getString("description");
+				String ethnicity = rs.getString("ethnicity");
+				String apparent_ethnicity = rs.getString("apparent_ethnicity");
+				String location = rs.getString("location");
+				TwitterUser record = new TwitterUser();
+				twitterUsers.add(record);
+			}
+
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return twitterUsers;
+	}
+	
+	public void SplitListToSublist()
+	{	
+		// Define a list to accommodate clusters in different areas
+		/*List<Vector<int[]>> childList = new ArrayList<Vector<int[]>>();
+		Vector<int[]> tempList = new Vector<int[]>();*/
+		List<Vector<Integer>> childList = new ArrayList<Vector<Integer>>();
+		Vector<Integer> tempList = new Vector<Integer>();
+        //int[] tempList = new int[2];
+        //double x0 = ((TweetRecord)resultList.get(0).get(0)).getX();
+        //double y0 = ((TweetRecord)resultList.get(0).get(0)).getY();
+        double x0, y0;
+        if (resultList != null) {
+        	// eliminate the redundant clusters
+        	for (int i=0; i<resultList.size(); i++) {
+        		boolean flag = false;
+        		TweetRecord tweet = (TweetRecord)resultList.get(i).get(0);
+    			double x = tweet.getX();
+                double y = tweet.getY();
+                for (int j=0; j<childList.size(); j++) {
+                	tempList = childList.get(j);
+                	/*int timeLayer = tempList.get(0)[0];
+                	int listIndex = tempList.get(0)[1];*/
+                	int timeLayer = tempList.get(0);
+                	//int listIndex = tempList.get(0)[1];
+                	/*x0 = ((TweetRecord)resultList.get(timeLayer).get(listIndex).get(0)).getX();
+            		y0 = ((TweetRecord)resultList.get(timeLayer).get(listIndex).get(0)).getY();*/
+                	x0 = ((TweetRecord)resultList.get(timeLayer).get(0)).getX();
+            		y0 = ((TweetRecord)resultList.get(timeLayer).get(0)).getY();
+            		double distance = (x-x0)*(x-x0)+(y-y0)*(y-y0);
+            		if (distance < 9E10) {
+            			tempList.add(i);
+                        flag = true;
+                        break;
+                    } 
+                }
+                if (!flag)
+            	{
+                    tempList = new Vector<Integer>();
+                    int[] indexPair = new int[2];
+                    tempList.add(i);
+                    childList.add(tempList);
+            	}   
+        	}
+        }
+        
+        Comparator<Vector<Integer>> comparator = new Comparator<Vector<Integer>>()
+		{
+	        @Override
+	        public int compare(Vector<Integer> l1, Vector<Integer> l2) {	        	
+		        return (int) (l2.size() - l1.size());
+	        }
+		};
+		Collections.sort(childList, comparator);
+		
+		//Map<Integer, Vector<List>> resultCopy = new HashMap<Integer, Vector<List>>(resultList);
+		Vector<List> resultCopy = (Vector<List>)resultList.clone(); 
+		resultList.clear();
+		tempList = (Vector<Integer>)childList.get(0).clone();
+		for (int i=0; i<tempList.size(); i++)
+		{
+			int timeLayer = tempList.get(i);
+			resultList.add(resultCopy.get(timeLayer));
+		}				
+    }
+		
+	public void GetClusteredLocations() {
+		
+		ArrayList<TweetRecord> postTweets = new ArrayList<TweetRecord>();
+		int index = 0;
+		
+		double sumPer = 0.0;
+		for (int i=0; i<resultList.size(); i++) {
+			List<TweetRecord> cluster = resultList.get(i);
+			int clusterSize = cluster.size();
+			if(clusterSize > 5)// || percentage > threshold 
+			{
+			    ClusteredLocation location = new ClusteredLocation(index);
+				location.SetSize(cluster.size());
+				/*location.SetPercentage(percentage);
+				sumPer += percentage;*/
+				location.setTweetRecords(cluster);			
+				/*location.SetTimeRange(timestamps.get(2*clusterIndex), timestamps.get(2*clusterIndex+1));*/
+				double sumLat, sumLon, sumX, sumY;
+				sumLat = sumLon = sumX = sumY = 0;
+				
+				/*double Eps = Utility.determineEps(clusterVector, stDbscan.minpt, threshold);
+				double TEps = Utility.determineTEps(clusterVector, stDbscan.minpt, threshold);*/
+				int centerIndex = 0, mostSum = 0;
+				for(int j = 0; j < cluster.size(); j++)
+				{			
+					TweetRecord record = (TweetRecord) cluster.get(j);
+					record.setPlace(index);
+					postTweets.add(record);
+					
+					int neighborSum = 0;
+					Iterator<TweetRecord> points = cluster.iterator();
+					while(points.hasNext())
+					{						
+						TweetRecord q = points.next();
+						if(Utility.getDistance(record,q)<=stDbscanNew.e && Utility.getTimeDistance(record, q)<=stDbscanNew.et)
+						{
+							neighborSum += 1;
+						}
+					}
+					if (neighborSum > mostSum) {
+						mostSum = neighborSum;
+						centerIndex = j;
+					}			
+				}
+				
+				TweetRecord centroid = (TweetRecord) cluster.get(centerIndex);
+				double centroidLat = centroid.latitude;
+				double centroidLon = centroid.longitude;
+				double centroidx = centroid.getX();
+				double centroidy = centroid.getY();
+				
+				location.SetLatLon(centroidLat, centroidLon);		
+				location.SetXY(centroidx, centroidy);	
+				location.SetStartTime(centroid.getMinuteTime());
+							
+				/*location.GetConvexGeometry();*/
+				locations.add(location);
+				index++;
+			}  			
+		}
+		double averagePer = sumPer/locations.size();
+		System.out.println(averagePer);
+		
+		Comparator<ClusteredLocation> comparator = new Comparator<ClusteredLocation>()
+		{
+	        @Override
+	        public int compare(ClusteredLocation l1, ClusteredLocation l2) {	        	
+		        return (int) (l1.startTime - l2.startTime);
+	        }
+		};
+		Collections.sort(locations, comparator);
+	}
+	
+    /*public static void main(String[] args) {
+  
+	    String userName = "iAmHannahPerry";
+	    long user_id  = 1260943243;
+
+		String dbName = "austin";
+		String tableName = "tweets";
+		int srid = 2163;
+		
+		user_id = 200587956;
+		
+		query = "select ST_X(ST_Transform(geom, " + srid + ")) as x, ST_Y(ST_Transform(geom, " + srid 
+				+ ")) as y, ST_X(geom) as lon, ST_Y(geom) as lat, create_at from " + tableName
+				+ "  where  ( create_at < '2012-10-27 23:59:59' ) "+" and  geom is not null" 
+				;
+	   
+		STDBSCANCluster test = new STDBSCANCluster(user_id, dbName, tableName);
+    }*/
+	
+    // Added by Guiming @ 2016-07-05
+    /*write tweets to csv*/
+    private static void WriteSelectedTweetsToCSV(ArrayList<TweetRecord> tweets, String Filename, Boolean latlon){
+	    try
+		    {
+		        FileWriter writer = new FileWriter(Filename);
+			 
+		        for(int i = 0; i < tweets.size(); i++){
+				
+		    	    TweetRecord tweet = tweets.get(i);
+		    	
+		    	    if(latlon){
+				        writer.append(Double.toString(tweet.longitude));
+				        writer.append(',');
+				        writer.append(Double.toString(tweet.latitude));
+				        writer.append(',');
+			    }
+		    	
+			    writer.append(Double.toString(tweet.x));
+			    writer.append(',');
+			    writer.append(Double.toString(tweet.y));
+			    writer.append(',');
+			    //writer.append(Double.toString(tweet.getHourTime()));
+			    writer.append(Double.toString(tweet.getMinuteTime()));
+			    writer.append('\n');
+		    }				
+		    //generate whatever data you want
+				
+		    writer.flush();
+		    writer.close();
+		}
+		catch(IOException e)
+		{
+		    e.printStackTrace();
+		} 
+    } 
+ 
+    //Added by Guiming @ 2016-07-05
+    /*write tweets to csv*/
+    private static void WriteClusteredTweetsToCSV(List<StPoint> stPoints, String Filename, Boolean latlon){
+	    try
+		{
+		    FileWriter writer = new FileWriter(Filename);
+			 
+		    for(int i = 0; i < stPoints.size(); i++){
+		    			
+		    	StPoint pnt = stPoints.get(i);
+		    	
+		    	if(latlon){
+				    writer.append(Double.toString(pnt.GetLon()));
+				    writer.append(',');
+				    writer.append(Double.toString(pnt.GetLat()));
+				    writer.append(',');
+			    }
+		    	
+			    writer.append(Double.toString(pnt.GetX()));
+			    writer.append(',');
+			    writer.append(Double.toString(pnt.GetY()));
+			    writer.append(',');
+			    writer.append(Double.toString(pnt.GetT()));
+			    
+			    if(pnt.GetClusterID() != -1){
+				    writer.append(',');
+				    writer.append(Integer.toString(pnt.GetClusterID()));
+			    }			    
+			    writer.append('\n');
+		    }				
+		    //generate whatever data you want
+				
+		    writer.flush();
+		    writer.close();
+		}
+		catch(IOException e)
+		{
+		     e.printStackTrace();
+		} 
+    }     	
+}

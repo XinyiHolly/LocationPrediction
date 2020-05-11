@@ -1,0 +1,28 @@
+package org.servlet;
+import java.util.*;
+
+/**
+ * 
+ * @author Xinyi
+ *
+ */
+public class Users {
+	private ArrayList<User_Info> user_Array;
+    
+    public Users() {
+    	user_Array = new ArrayList<User_Info>();
+    }
+    
+    public int size() {
+    	return user_Array.size();
+    }    
+    
+    public void AddUser(User_Info user) {
+    	user_Array.add(user);
+    }  
+    
+    public User_Info GetUser(int i) {
+    	return user_Array.get(i);
+    }        
+    
+}

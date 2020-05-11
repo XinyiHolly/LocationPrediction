@@ -1,0 +1,34 @@
+package org.servlet;
+import java.util.*;
+
+/**
+ * 
+ * @author Xinyi
+ *
+ */
+public class Tweets {
+    
+	private ArrayList<Tweet_Info> tweet_Array;
+	/*private PriorityQueue<Tweet_Info> tweet_Array;*/
+    
+    public Tweets() {
+    	tweet_Array = new ArrayList<Tweet_Info>();
+    }
+    
+    public int size() {
+    	return tweet_Array.size();
+    }
+    
+    public void AddTweet(Tweet_Info tweet) {
+    	tweet_Array.add(tweet);
+    }
+    
+    public void SetTweet(int i, Tweet_Info t) {
+    	tweet_Array.set(i, t);
+    }
+    
+    public Tweet_Info GetTweet(int i) {
+    	return tweet_Array.get(i);
+    }   
+    
+}

@@ -1,0 +1,618 @@
+package org.tweet.location;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+/*import com.google.code.geocoder.Geocoder;
+import com.google.code.geocoder.GeocoderRequestBuilder;
+import com.google.code.geocoder.model.GeocodeResponse;
+import com.google.code.geocoder.model.GeocoderAddressComponent;
+import com.google.code.geocoder.model.GeocoderRequest;
+import com.google.code.geocoder.model.GeocoderResult;
+import com.google.code.geocoder.model.LatLng;*/
+import com.googlecode.placesapiclient.client.argument.ArgumentMap;
+import com.googlecode.placesapiclient.client.argument.helper.ArgumentMapHelper;
+import com.googlecode.placesapiclient.client.entity.Place;
+import com.googlecode.placesapiclient.client.exception.ErrorCodeException;
+import com.googlecode.placesapiclient.client.service.PlacesService;
+import com.googlecode.placesapiclient.client.service.impl.PlacesServiceImpl;
+
+public class ActivityZone {
+
+	public double latitude = 0.0;
+	public double longitude = 0.0;
+	public int radius = 50;
+	public double lowerTime = 0.0;
+	public double upperTime = 0.0;
+	public int tweetsNumber = 0;
+	public int landUseType = 0;
+	public double nightPercent = 0.0;
+	public String zoneType = "";
+	
+	public Map<String, List<String>> activityNameMap = new HashMap<String, List<String>>();
+	
+	public ActivityZone(double lat, double lon, int r)
+	{
+		latitude = lat;
+		longitude = lon;
+		radius = r;
+		initialNameCategory();
+	}
+	
+	public void setNightPercent(double p)
+	{
+		nightPercent = p;
+	}
+	
+	public double getNightPercent()
+	{
+		return nightPercent;
+	}
+	
+	public void setTimeRange(double lower, double upper)
+	{
+		lowerTime = lower;
+		upperTime = upper;
+	}
+	
+	public void setTweetsNum(int n)
+	{
+		tweetsNumber = n;
+	}
+	
+	public int getTweetNum()
+	{
+		return tweetsNumber;
+	}
+	
+	public void setLandUseType(int type)
+	{
+		landUseType = type;
+	}
+	
+	public int getLandUseType()
+	{
+		return landUseType;
+	}
+	
+	public void initialNameCategory()
+	{
+		List<String> homeZone = Arrays.asList("apartment", "condo", "house");
+		List<String> transpotationZone = Arrays.asList("airport", "bus_station", "parking", "transit_station", "rv_park", "subway_station", "taxi_stand", "train_station", "travel_agency");
+		List<String> workZone = Arrays.asList("bank", "accounting", "city_hall", "courthouse", "embassy", "finance", "fire_station", "general_contractor", "lawyer", "local_government_office", "police", "post_office");
+		List<String> eatingZone = Arrays.asList("cafe", "bakery", "restaurant", "food", "meal_delivery", "meal_takeaway");
+		List<String> entertainmentZone = Arrays.asList("casino", "amusement_park", "aquarium", "art_gallery", "bar", "beauty_salon", "bowling_alley", "gym", "hair_care", "movie_theater", "museum", "night_club", "painter", "park", "spa", "stadium", "zoo");
+		List<String> shoppingZone = Arrays.asList("clothing_store", "store", "bicycle_store", "book_store", "convenience_store", "department_store", "electronics_store", "florist", "grocery_or_supermarket", "furniture_store", "hardware_store", "home_goods_store", "jewelry_store", "liquor_store", "pet_store", "shoe_store", "shopping_mall", "store");
+		List<String> educationZone =  Arrays.asList("university", "school", "campground", "library");
+		List<String> healthZone = Arrays.asList("hospital", "doctor", "dentist", "health", "pharmacy", "physiotherapist");
+		List<String> serviceZone = Arrays.asList("atm", "car_dealer", "car_rental", "car_repair", "car_wash", "cemetery", "church", "electrician", "funeral_home", "gas_station", "hindu_temple", "incurance_agency", "laundry", "locksmith", "lodging", "place_of_worship", "plumber", "real_estate_agency", "roofing_contractor", "storage", "synagogue", "veterinary_car");
+		
+		activityNameMap.put("home", homeZone);
+		activityNameMap.put("transpotation", transpotationZone);
+		activityNameMap.put("work", workZone);
+		activityNameMap.put("eating", eatingZone);
+		activityNameMap.put("entertainment", entertainmentZone);
+		activityNameMap.put("shopping", shoppingZone);
+		activityNameMap.put("health", healthZone);
+		activityNameMap.put("education", educationZone);
+		activityNameMap.put("service", serviceZone);
+		
+	}
+	
+	
+	public String inferDcZoneType(List<Place> placeList)
+	{
+		///for dc dataset
+		///1-residential area
+		///2-commercial area
+		///3-residential and commercial mixed area
+		///4-governmental area
+		///5-educational area
+		///6-park and open space
+		///7-production, working and offices
+		///8-public area
+		///0-unknown
+		
+        for(Place place : placeList) 
+        {
+        	System.out.println(place.toString());
+        	if(place.getTypeList().contains("route"))
+        		continue;
+        	if(place.getName().contains("Apartments") || place.getName().contains("Homes"))
+        		return "Dwelling";
+        	if(place.getName().contains("Supermarket"))
+        		return "Shopping";
+        	if(place.getName().contains("Mall"))
+        		return "Shopping";
+        	if(place.getName().contains("Univeristy") || place.getName().contains("College"))
+        		return "Education";
+        	if(place.getName().contains("School"))
+        		return "Education";
+        	if(place.getName().contains("Health"))
+        		return "Health";
+        	if(place.getName().contains("Doctor"))
+        		return "Health";
+        	if(place.getName().contains("Dentist"))
+        		return "Health";
+        	if(place.getName().contains("Store"))
+        		return "Store";
+        }
+        
+        
+        ///type
+		if(landUseType == 1)
+		{///dwelling land use type
+			for(Place place : placeList)
+			{
+				//System.out.println(place.getTypeList().toString());
+			}
+	        return "Dwelling";
+		}
+		else if(landUseType == 2 || landUseType == 3)
+		{///commercial land use type
+	        for(Place place : placeList)
+	        {
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("eating").size(); i++)
+		        	{
+		        		if(activityNameMap.get("eating").get(i).contains(type))
+		        			return "Eating";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("entertainment").size(); i++)
+		        	{
+		        		if(activityNameMap.get("entertainment").get(i).contains(type))
+		        			return "Entertainment";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("shopping").size(); i++)
+		        	{
+		        		if(activityNameMap.get("shopping").get(i).contains(type))
+		        			return "Shopping";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("service").size(); i++)
+		        	{
+		        		if(activityNameMap.get("service").get(i).contains(type))
+		        			return "Service";
+		        	}
+	        	}
+	        }
+	        
+	        return "Dwelling";
+	        
+		}
+		else if(landUseType == 4 || landUseType == 7)
+		{///Business and industry land use type
+	        for(Place place : placeList)
+	        {
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("transpotation").size(); i++)
+		        	{
+		        		if(activityNameMap.get("transpotation").get(i).contains(type))
+		        			return "Transpotation";
+		        	}
+	        	}
+	        	
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("service").size(); i++)
+		        	{
+		        		if(activityNameMap.get("service").get(i).contains(type))
+		        			return "Service";
+		        	}
+	        	}	        	
+	        	
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("work").size(); i++)
+		        	{
+		        		if(activityNameMap.get("work").get(i).contains(type))
+		        			return "Work";
+		        	}
+	        	}
+	        	
+	        	///[neighborhood, political]-office
+
+	        }
+			return "Office";
+		}
+		else if(landUseType == 5)
+		{///Education and Health land use type
+	        for(Place place : placeList)
+	        {
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("education").size(); i++)
+		        	{
+		        		if(activityNameMap.get("education").get(i).contains(type))
+		        			return "Education";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("health").size(); i++)
+		        	{
+		        		if(activityNameMap.get("health").get(i).contains(type))
+		        			return "Health";
+		        	}
+	        	}
+	        }
+	        return "Education or Health";
+		}
+		else if(landUseType == 6)
+		{///Recreational and open space land use type
+	        for(Place place : placeList)
+	        {	
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	if(place.getName().contains("Park"))
+	        		return "Park";
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("entertainment").size(); i++)
+		        	{
+		        		if(activityNameMap.get("entertainment").get(i).contains(type))
+		        			return "Entertainment";
+		        	}
+	        	}
+	        }
+	        
+	        return "Recreation";
+		}
+		else
+		{///mixed land use type
+	        for(Place place : placeList)
+	        {
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("eating").size(); i++)
+		        	{
+		        		if(activityNameMap.get("eating").get(i).contains(type))
+		        			return "Eating";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("health").size(); i++)
+		        	{
+		        		if(activityNameMap.get("health").get(i).contains(type))
+		        			return "Health";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("entertainment").size(); i++)
+		        	{
+		        		if(activityNameMap.get("entertainment").get(i).contains(type))
+		        			return "Entertainment";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("transpotation").size(); i++)
+		        	{
+		        		if(activityNameMap.get("transpotation").get(i).contains(type))
+		        			return "Transpotation";
+		        	}
+	        	}
+	        }
+	        return "Others";
+		}
+				
+	}
+	
+	public String getActivityZoneType(List<Place> placeList)
+	{
+		///landUseType 1-dwelling, 2-commercial, 3-business&industrial, 4-education&health, 5-entertainment&open space, 6-others
+		//name
+		//System.out.println("zone type analysis for point: " + this.latitude + "," + this.longitude + " within the radius of " + this.radius + " meter");
+        for(Place place : placeList) 
+        {
+        	System.out.println(place.toString());
+        	if(place.getTypeList().contains("route"))
+        		continue;
+        	if(place.getName().contains("Apartments") || place.getName().contains("Homes"))
+        		return "Dwelling";
+        	if(place.getName().contains("Supermarket"))
+        		return "Shopping";
+        	if(place.getName().contains("Mall"))
+        		return "Shopping";
+        	if(place.getName().contains("Univeristy") || place.getName().contains("College"))
+        		return "Education";
+        	if(place.getName().contains("School"))
+        		return "Education";
+        	if(place.getName().contains("Health"))
+        		return "Health";
+        	if(place.getName().contains("Doctor"))
+        		return "Health";
+        	if(place.getName().contains("Dentist"))
+        		return "Health";
+        	if(place.getName().contains("Store"))
+        		return "Store";
+        }
+        
+        
+        ///type
+		if(landUseType == 1)
+		{///dwelling land use type
+			for(Place place : placeList)
+			{
+				//System.out.println(place.getTypeList().toString());
+			}
+	        return "Dwelling";
+		}
+		else if(landUseType == 2)
+		{///commercial land use type
+	        for(Place place : placeList)
+	        {
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("eating").size(); i++)
+		        	{
+		        		if(activityNameMap.get("eating").get(i).contains(type))
+		        			return "Eating";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("entertainment").size(); i++)
+		        	{
+		        		if(activityNameMap.get("entertainment").get(i).contains(type))
+		        			return "Entertainment";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("shopping").size(); i++)
+		        	{
+		        		if(activityNameMap.get("shopping").get(i).contains(type))
+		        			return "Shopping";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("service").size(); i++)
+		        	{
+		        		if(activityNameMap.get("service").get(i).contains(type))
+		        			return "Service";
+		        	}
+	        	}
+	        }
+	        
+	        return "Commercial";
+	        
+		}
+		else if(landUseType == 3)
+		{///Business and industry land use type
+	        for(Place place : placeList)
+	        {
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("transpotation").size(); i++)
+		        	{
+		        		if(activityNameMap.get("transpotation").get(i).contains(type))
+		        			return "Transpotation";
+		        	}
+	        	}
+	        	
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("service").size(); i++)
+		        	{
+		        		if(activityNameMap.get("service").get(i).contains(type))
+		        			return "Service";
+		        	}
+	        	}	        	
+	        	
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("work").size(); i++)
+		        	{
+		        		if(activityNameMap.get("work").get(i).contains(type))
+		        			return "Work";
+		        	}
+	        	}
+	        	
+	        	///[neighborhood, political]-office
+
+	        }
+			return "Office";
+		}
+		else if(landUseType == 4)
+		{///Education and Health land use type
+	        for(Place place : placeList)
+	        {
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("education").size(); i++)
+		        	{
+		        		if(activityNameMap.get("education").get(i).contains(type))
+		        			return "Education";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("health").size(); i++)
+		        	{
+		        		if(activityNameMap.get("health").get(i).contains(type))
+		        			return "Health";
+		        	}
+	        	}
+	        }
+	        return "Education or Health";
+		}
+		else if(landUseType == 5)
+		{///Recreational and open space land use type
+	        for(Place place : placeList)
+	        {	
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	if(place.getName().contains("Park"))
+	        		return "Park";
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("entertainment").size(); i++)
+		        	{
+		        		if(activityNameMap.get("entertainment").get(i).contains(type))
+		        			return "Entertainment";
+		        	}
+	        	}
+	        }
+	        
+	        return "Recreation";
+		}
+		else if(landUseType == 6)
+		{///mixed land use type
+	        for(Place place : placeList)
+	        {
+	        	if(place.getTypeList().contains("route"))
+	        		continue;
+	        	List<String> types = place.getTypeList();
+	        	//System.out.println(place.getTypeList().toString());
+	        	for(String type : types)
+	        	{
+		        	for(int i = 0; i < activityNameMap.get("eating").size(); i++)
+		        	{
+		        		if(activityNameMap.get("eating").get(i).contains(type))
+		        			return "Eating";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("health").size(); i++)
+		        	{
+		        		if(activityNameMap.get("health").get(i).contains(type))
+		        			return "Health";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("entertainment").size(); i++)
+		        	{
+		        		if(activityNameMap.get("entertainment").get(i).contains(type))
+		        			return "Entertainment";
+		        	}
+		        	
+		        	for(int i = 0; i < activityNameMap.get("transpotation").size(); i++)
+		        	{
+		        		if(activityNameMap.get("transpotation").get(i).contains(type))
+		        			return "Transpotation";
+		        	}
+	        	}
+	        }
+	        return "Others";
+		}
+		return "Others";
+	}
+	
+	/*public String getAddress(double lat, double lon)
+	{
+		final Geocoder geocoder = new Geocoder();
+		GeocoderRequest geocoderRequest = new GeocoderRequestBuilder().setLocation(new LatLng(Double.toString(lat), Double.toString(lon))).setLanguage("en").getGeocoderRequest();
+		GeocodeResponse geocoderResponse = geocoder.geocode(geocoderRequest);
+		final GeocoderResult geocoderResult = geocoderResponse.getResults().iterator().next();
+		List<GeocoderAddressComponent> addressComponents = geocoderResult.getAddressComponents();
+		String strAddress = "";
+		for(int j = 0; j < addressComponents.size(); j++)
+		{
+			GeocoderAddressComponent obj = addressComponents.get(j);
+			strAddress = strAddress + obj.getLongName() + ",";
+		}
+		//System.out.println(strAddress);
+		return strAddress;
+	}*/
+	
+	public void SetZoneType(String type)
+	{
+		zoneType = type;
+	}
+	
+	public String getZoneTypeFromLandUseType()
+	{
+		///1-residential area
+		///2-commercial area
+		///3-residential and commercial mixed area
+		///4-governmental area
+		///5-educational area
+		///6-park and open space
+		///7-production, working and offices
+		///8-public area
+		///0-unknown
+		
+		if(landUseType == 1 || landUseType == 3)
+			return "Dwelling";
+		else if(landUseType == 2)
+			return "Commercial";
+		else if(landUseType == 4)
+			return "Office";
+		else if(landUseType == 5)
+			return "Education&Health";
+		else if(landUseType == 6)
+			return "Entertainment";
+		else if(landUseType == 7)
+			return "Office";
+		else if(landUseType == 8)
+			return "Public";
+		else
+			return "Unknown";
+	}
+	
+	public String analyzeZoneType() 
+	{
+		
+		try
+		{
+			PlacesService placesService = new PlacesServiceImpl(PlaceApiKeyManager.getInstance().getAvailiableApiKey());
+			placesService.init();
+	        ArgumentMap argumentMap= ArgumentMapHelper.prepareArgumentMapForPlaceNerbySearch(placesService.getApiKey(), latitude, longitude, radius, false);
+	        List<Place> placeList = placesService.placeNearbySearchRequest(argumentMap);
+		    //zoneType = getActivityZoneType(placeList);			    		    
+	        zoneType = inferDcZoneType(placeList);
+		    
+		} catch (ErrorCodeException e) {
+			// TODO Auto-generated catch block
+						
+			System.out.println("error: " + e.getErrorCode() + "," + e.getMessage());
+						
+			e.printStackTrace();
+		}
+
+        return zoneType;
+	}
+	
+	public String toString()
+	{
+		StringBuffer sb = new StringBuffer();
+		sb.append(zoneType + " ");
+		sb.append(Double.toString(latitude) + " ");
+		sb.append(Double.toString(longitude) + " ");
+		sb.append(Integer.toString(tweetsNumber) + " ");
+		sb.append(Double.toString(lowerTime) + " ");
+		sb.append(Double.toString(upperTime) + " ");
+		sb.append(Double.toString(nightPercent));
+		return sb.toString();
+	}
+	
+	public static void main(String[] args) {
+
+	}
+
+}

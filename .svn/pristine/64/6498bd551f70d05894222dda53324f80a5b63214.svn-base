@@ -1,0 +1,450 @@
+package org.tweet.location;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+
+import org.social.spatialcluster.RunClustering.XCompare;
+import org.tweet.TweetRecord;
+
+import org.opensphere.geometry.algorithm.ConcaveHull;
+import com.vividsolutions.jts.geom.Coordinate;
+import com.vividsolutions.jts.geom.Geometry;
+import com.vividsolutions.jts.geom.GeometryFactory;
+import com.vividsolutions.jts.geom.MultiPoint;
+import com.vividsolutions.jts.geom.Polygon;
+
+/*import com.vividsolutions.jts.algorithm.ConvexHull;
+import com.vividsolutions.jts.geom.Coordinate;
+import com.vividsolutions.jts.geom.Geometry;
+import com.vividsolutions.jts.geom.GeometryFactory;
+import com.vividsolutions.jts.geom.MultiPoint;
+import com.vividsolutions.jts.geom.Polygon;
+import com.vividsolutions.jts.geom.PrecisionModel;*/
+
+public class ClusteredLocation {
+
+	public int pid;
+	public String repid;
+	public String landUse;
+	public double latitude;
+	public double longitude;
+	public double x;
+	public double y;
+	
+	public double meanLatitude;
+	public double meanLongitude;
+	public double meanX;
+	public double meanY;
+	
+	public double eps;
+	public int k;
+	
+	public double startTime;
+	public double endTime;
+	public int size;
+	public double percentage;
+	// public ArrayList<Coordinate> coordinates = new ArrayList<Coordinate>();
+	
+	public List<TweetRecord> records = new ArrayList<TweetRecord>();
+	public int inTimes;
+	public int outTimes;
+	// public Geometry convexPolygon;
+	public boolean isRepresetnative = false;
+	
+	public static void getStaticTest() {
+		System.out.println("Hello");;
+	}
+	
+	public ClusteredLocation(int id)
+	{
+		pid = id;
+	}
+	
+	public void setTweetRecords(List<TweetRecord> records){
+		this.records = records;
+	}
+	public List<TweetRecord> getTweetRecords(){
+		return this.records ;
+	}
+	
+	public int GetPlaceId()
+	{
+		return pid;
+	}
+	
+	/*public String GetLandUseTypeFromXY(HashMap<Geometry, String> map)
+	{
+		if(map == null){
+			return null;
+		}
+		String type = "Other";
+		Geometry pGeo = new GeometryFactory().createPoint(new Coordinate(x, y));
+		Iterator it = map.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry pairs = (Map.Entry)it.next();
+			Geometry polygon = (Geometry) pairs.getKey();
+			if(pGeo.within(polygon))
+			{
+				if(pairs.getValue() != null)
+				{
+					type = (String) pairs.getValue();
+					return type;
+				}
+			}
+		}
+		return type;
+	}
+	*/
+	/*public String GetLandUseType(HashMap<Geometry, String> map)
+	{
+		String type = "Other";
+		Geometry pGeo = new GeometryFactory().createPoint(new Coordinate(longitude, latitude));
+		Iterator it = map.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry pairs = (Map.Entry)it.next();
+			Geometry polygon = (Geometry) pairs.getKey();
+			if(pGeo.within(polygon))
+			{
+				if(pairs.getValue() != null)
+				{
+					type = (String) pairs.getValue();
+					return type;
+				}
+			}
+		}
+		return type;
+	}*/
+	
+	/*public static String GetLandUseTypeByPoint(HashMap<Geometry, String> map, double x, double y)
+	{
+		String type = "";
+		Geometry pGeo = new GeometryFactory().createPoint(new Coordinate(x, y));
+		Iterator it = map.entrySet().iterator();
+		while (it.hasNext()) {
+			Map.Entry pairs = (Map.Entry)it.next();
+			Geometry polygon = (Geometry) pairs.getKey();
+			if(pGeo.within(polygon))
+			{
+				type = (String) pairs.getValue();
+				return type;
+			}
+		}
+		return type;
+	}*/
+	
+	public int GetClusterId()
+	{
+		return pid;
+	}
+	
+	public void SetRepId(String id)
+	{
+		repid = id;
+	}
+	
+	public String GetRepId()
+	{
+		return repid;
+	}
+	
+	public void SetSize(int s)
+	{
+		size = s;
+	}
+	
+	public int GetSize()
+	{
+		return size;
+	}
+	
+	public void SetPercentage(double p)
+	{
+		percentage = p;
+	}
+	
+	public double GetPercentage()
+	{
+		return percentage;
+	}
+	
+	public void SetEPS(double eps)
+	{
+		this.eps = eps;
+	}
+	
+	public double GetEPS()
+	{
+		return eps;
+	}
+	
+	public void SetK(int k)
+	{
+		this.k = k;
+	}
+	
+	public int GetK()
+	{
+		return k;
+	}
+	
+	public void SetLatLon(double lat, double lon)
+	{
+		latitude = lat;
+		longitude = lon;
+	}
+	
+	public void SetXY(double cx, double cy)
+	{
+		this.x = cx;
+		this.y = cy;
+	}
+	
+	public void SetMeanLatLon(double lat, double lon)
+	{
+		meanLatitude = lat;
+		meanLongitude = lon;
+	}
+	
+	public void SetMeanXY(double cx, double cy)
+	{
+		this.meanX = cx;
+		this.meanY = cy;
+	}
+	
+	public void SetTimeRange(double s, double e)
+	{
+		startTime = s;
+		endTime = e;
+	}
+	
+	public void SetStartTime(double s)
+	{
+		startTime = s;
+	}
+	
+	public void SetEndTime(double e)
+	{
+		startTime = e;
+	}
+	
+	public double GetStartTime()
+	{
+		return startTime;
+	}
+	
+	public double GetEndTime()
+	{
+		return endTime;
+	}
+	
+	public double GetLatitude()
+	{
+		return latitude;
+	}
+	
+	public double GetLongitude()
+	{
+		return longitude;
+	}
+	
+	public double GetMeanLatitude()
+	{
+		return meanLatitude;
+	}
+	
+	public double GetMeanLongitude()
+	{
+		return meanLongitude;
+	}
+	
+	/*public void AddCoordinate(Coordinate co)
+	{
+		coordinates.add(co);
+	}*/
+	
+	public void In()
+	{
+		inTimes++;
+	}
+	
+	public void Out()
+	{
+		outTimes++;
+	}
+	
+	/*public Coordinate[] GetCoordinates()
+	{
+		Coordinate[] cloud = new Coordinate[coordinates.size()];
+		for (int i = 0; i < cloud.length; i++) {
+			cloud[i] = coordinates.get(i);
+		}
+		return cloud;
+	}*/
+	
+	/*public Geometry GetConvexGeometry()
+	{
+		Coordinate[] cloud = new Coordinate[coordinates.size()];
+		for (int i = 0; i < cloud.length; i++) {
+			cloud[i] = coordinates.get(i);
+		}
+		GeometryFactory factory = new GeometryFactory();
+		MultiPoint points = factory.createMultiPoint(cloud);
+		points.normalize();
+
+		convexPolygon = points.convexHull();
+		//System.out.println(GetCoordinates().length + convexPolygon.toText());
+		return convexPolygon;
+	}*/
+	
+	public   ArrayList<TweetRecord> getConvexHull() 
+	{
+		ArrayList<TweetRecord> xSorted = new ArrayList<TweetRecord>(records); 
+		Collections.sort(xSorted, new XCompare());
+
+		int n = xSorted.size();
+
+		TweetRecord[] lUpper = new TweetRecord[n];
+
+		lUpper[0] = xSorted.get(0);
+		lUpper[1] = xSorted.get(1);
+
+		int lUpperSize = 2;
+
+		for (int i = 2; i < n; i++)
+		{
+			lUpper[lUpperSize] = xSorted.get(i);
+			lUpperSize++;
+
+			while (lUpperSize > 2 && !rightTurn(lUpper[lUpperSize - 3], lUpper[lUpperSize - 2], lUpper[lUpperSize - 1]))
+			{
+				// Remove the middle point of the three last
+				lUpper[lUpperSize - 2] = lUpper[lUpperSize - 1];
+				lUpperSize--;
+			}
+		}
+
+		TweetRecord[] lLower = new TweetRecord[n];
+
+		lLower[0] = xSorted.get(n - 1);
+		lLower[1] = xSorted.get(n - 2);
+
+		int lLowerSize = 2;
+
+		for (int i = n - 3; i >= 0; i--)
+		{
+			lLower[lLowerSize] = xSorted.get(i);
+			lLowerSize++;
+
+			while (lLowerSize > 2 && !rightTurn(lLower[lLowerSize - 3], lLower[lLowerSize - 2], lLower[lLowerSize - 1]))
+			{
+				// Remove the middle point of the three last
+				lLower[lLowerSize - 2] = lLower[lLowerSize - 1];
+				lLowerSize--;
+			}
+		}
+
+		ArrayList<TweetRecord> result = new ArrayList<TweetRecord>();
+
+		for (int i = 0; i < lUpperSize; i++)
+		{
+			result.add(lUpper[i]);
+		}
+
+		for (int i = 1; i < lLowerSize - 1; i++)
+		{
+			result.add(lLower[i]);
+		}
+
+		return result;
+	}
+	
+	
+	public static TweetRecord getTweetRecord(List<TweetRecord> tweets, double x, double y)
+	{
+		TweetRecord tr = null;
+		for(int i = 0; i < tweets.size(); i++)
+		{
+			TweetRecord record = tweets.get(i);
+			if(Math.abs(x - record.x) < 0.5 && Math.abs(y - record.y) < 0.5)
+			{
+				tr =record;
+				break;
+			}
+		}
+
+		return tr;
+	}
+
+	
+	public  ArrayList<TweetRecord> getConcaveHull() 
+	{
+		
+		ArrayList<TweetRecord> points = new ArrayList<TweetRecord>(records); 
+
+		int size = points.size();
+		GeometryFactory fac = new GeometryFactory();
+	    Coordinate[] coords = new Coordinate[size];
+	    for(int t = 0; t < size; t++)
+	    {
+	        coords[t] = new Coordinate(points.get(t).x, points.get(t).y);
+	    }
+	    
+		MultiPoint mpoints = fac.createMultiPoint(coords);
+		
+		
+		Geometry concaveHull = null;
+		ArrayList<TweetRecord> result = new ArrayList<TweetRecord>();
+		
+		try {
+			ConcaveHull ch = new ConcaveHull(mpoints, 5);
+			concaveHull = ch.getConcaveHull();
+			
+			
+			if(concaveHull.getGeometryType() == "Polygon")
+			{
+				Polygon polygon = (Polygon) concaveHull;
+				for(int i = 0; i < polygon.getCoordinates().length; i++)
+				{
+					
+					double x = (int) polygon.getCoordinates()[i].x;
+					double y = (int) polygon.getCoordinates()[i].y;
+					
+					TweetRecord tr = getTweetRecord(points, x, y);
+					
+					if(tr != null) {
+						result.add(tr);
+					}
+					
+				}
+			}
+			
+		}catch (Exception e){
+			
+			System.out.println("error information: " +  e.getMessage());
+			
+		}
+
+		return result;
+	}
+
+
+	private  boolean rightTurn(TweetRecord a, TweetRecord b, TweetRecord c)
+	{
+		return (b.getX()- a.getX())*(c.getY()- a.getY()) - (b.getY() - a.getY())*(c.getX() - a.getX()) > 0;
+	}
+
+	public class XCompare implements Comparator<TweetRecord>
+	{
+		@Override
+		public int compare(TweetRecord o1, TweetRecord o2) 
+		{
+			return (new Double(o1.getX())).compareTo(new Double(o2.getX()));
+		}
+	}
+}

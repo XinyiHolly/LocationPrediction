@@ -1,0 +1,204 @@
+package org.tweet;
+
+public class TweetRecord {
+
+	public long id;
+	public double x;
+	public double y;
+	public double latitude;
+	public double longitude;
+	public double day;
+	public double month;
+	public double year;
+	public double hour;
+	public double minute;
+	public double second;
+	public int placeId;
+	public boolean visited;
+	public double distance;
+	public long time;
+	public String create_at;
+	public String tweetId;
+	public int cluster_label;
+	public double emotion;
+	public long userId;
+	
+	private double eps;
+	private double et;
+	private int k;
+	
+	public TweetRecord(double geo_x, double geo_y, double dd, double dm, double dy, double th, double tm)
+	{
+		x = geo_x;
+		y = geo_y;
+		day = dd;
+		month = dm;
+		year = dy;
+		hour = th;
+		minute = tm;
+		latitude = 0.0;
+		longitude = 0.0;
+		placeId = -1;
+		visited = false;
+		distance = 0.0;
+		cluster_label = -1;
+	}
+	
+	public TweetRecord(double vx, double vy, double vt)
+	{
+		x = vx;
+		y = vy;
+	}
+	
+	public TweetRecord(double vx, double vy)
+	{
+		x = vx;
+		y = vy;
+	}
+	
+	public double getX()
+	{
+		return x;
+	}
+	
+	public double getY()
+	{
+		return y;
+	}
+	
+	public int getYear()
+	{
+		return (int) year;
+	}
+	
+	public int getMonth()
+	{
+		return (int) month;
+	}
+	
+	public int getDay()
+	{
+		return (int) day;
+	}
+	
+	public void setTime(long time)
+	{
+		this.time = time;
+	}
+	
+	public String getCreateTime()
+	{
+		return this.create_at;
+	}
+	
+	public void setTweetID(String tweetId)
+	{
+		this.tweetId = tweetId;
+	}
+	
+	public String getTweetID()
+	{
+		return this.tweetId;
+	}
+	
+	
+	public void setCreateTime(String create_at)
+	{
+		this.create_at = create_at;
+	}
+		
+	public double getTime()
+	{
+		return hour + minute / 60.0  ;
+	}
+	
+	public double getHourTime()
+	{
+		return hour + minute / 60.0  ;
+	}
+	
+	public double getSecondTime()
+	{
+		return hour * 3600 + minute*60 + second;
+	}
+	
+	public double getMinuteTime()
+	{
+		return hour * 60 + minute + second / 60.0;
+	}
+	
+	public long getFullTime()
+	{
+		return time ;
+	}
+	public double getLatitude()
+	{
+		return latitude;
+	}
+	
+	public double getLongitude()
+	{
+		return longitude;
+	}
+		
+	public double getEmotion()
+	{
+		return emotion;
+	}
+	
+	public String toString()
+	{
+		return Double.toString(x) + " " + Double.toString(y) + " " + 
+				Double.toString(year) + " " + Double.toString(month) + " " + 
+				Double.toString(day) + " " + Double.toString(this.getTime()) + " " + 
+				Integer.toString(placeId) + " + " + Double.toString(distance); 
+	}
+	
+	public void setLatLon(double lat, double lon)
+	{
+		latitude = lat;
+		longitude = lon;
+	}
+	
+	public void setPlace(int id)
+	{
+		placeId = id;
+	}
+	
+	public void setEps(double eps) {
+		this.eps = eps;
+	}
+	
+	public double getEps() {
+		return this.eps;
+	}
+	
+	public void setEt(double et) {
+		this.et = et;
+	}
+	
+	public double getEt() {
+		return this.et;
+	}
+	
+	public void setK(int k) {
+		this.k = k;
+	}
+	
+	public int getK() {
+		return this.k;
+	}
+	
+	public void setId(long id) {
+		this.id = id;
+	}
+	
+	public long getId() {
+		return this.id;
+	}
+	
+	public static void main(String[] args) {
+
+	}
+
+}

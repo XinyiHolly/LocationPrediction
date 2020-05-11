@@ -1,0 +1,28 @@
+package org.tweet;
+
+public class VdCoordinate extends TweetRecord{
+
+	private double eps;
+	private int k;
+	public VdCoordinate(double x, double y) {
+		super(x, y);
+		// TODO Auto-generated constructor stub
+	}
+	
+	public void setEps(double eps) {
+		this.eps = eps;
+	}
+	
+	public double getEps() {
+		return this.eps;
+	}
+	
+	public void setK(int k) {
+		this.k = k;
+	}
+	
+	public int getK() {
+		return this.k;
+	}
+
+}

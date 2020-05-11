@@ -1,0 +1,371 @@
+package org.social.spatialcluster;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+
+import java.util.List;
+
+import org.json.JSONArray;
+
+import org.social.postgresql.RelationalDBUtility;
+import org.tweet.TweetRecord;
+import org.tweet.location.ClusteredLocation;
+
+public class ActivityzoneUncertainty_geom {
+
+	static DBSCANCluster DClusters;
+	static VDBSCANCluster VClusters;
+	static STDBSCANCluster StClusters;
+	static STDBSCANClusterNew VstClusters;
+
+	public static void main(String[] args) {
+
+		String clusterName = "DBSCANCluster_300_4";
+		//String clusterName = "VDBSCANCluster";
+		String[] name = clusterName.split("_");
+		double eps = 0.0; int minpt = 4;
+		if (name.length>1) {
+			eps = Double.parseDouble(name[1]);
+			minpt = Integer.parseInt(name[2]);
+		}
+		int threshold = 4;
+
+		updateDistinctGeomSize(clusterName, eps, minpt, threshold);
+		//ActivityzoneUncertainty_geom rc = new  ActivityzoneUncertainty_geom(clusterName, eps, minpt, threshold);		
+
+		//	test(clusterName, eps, minpt, threshold);	
+	}
+
+	public ActivityzoneUncertainty_geom (String clusterName, double eps, int minpt, int threshold){
+
+		ArrayList<Long> users = new ArrayList<Long>(); 
+		ArrayList<Integer> tweetSizes = null;
+		ArrayList<ClusteredLocation> locations = null;
+		ArrayList<TweetRecord> noises = null;		
+		String dbName = "gps_trajectory";
+		String tableName = "records_test";
+
+	/*	String dbName = "foursquare";
+		String tableName = "dc_user_tweets";*/
+
+		String zoneTable = "activityzone_uncertainty";
+		RelationalDBUtility db = new RelationalDBUtility(dbName);
+		String sql = "";
+
+		//sql = " select distinct user_id from " + tableName + "  where user_id in (15664855, 30897466, 255702030, 318801866, 560268128) ";
+
+
+		//sql = " select distinct user_id from " + tableName + "  where user_id in ( 15664855)  ";
+		sql = " select distinct user_id from " + tableName + "  where user_id in ( 255702030)  ";
+		//sql = " select distinct user_id from " + tableName + "  where user_id in ( 30897466)  ";
+		//sql = " select distinct user_id from " + tableName + "  where user_id in ( 560268128)  ";
+		//sql = " select distinct user_id from " + tableName + "  where user_id in ( 318801866)  ";
+
+		//sql = " select user_id, location, geosize from dc_user_tweets_users where location ilike '%DC' and distinct_geosize > 100 and user_id not in (select distinct user_id from activityzone_uncertainty ) order by geosize ";
+		ResultSet rs = db.queryDB(sql);
+
+		try {
+			while (rs.next()){				
+				long user_id = rs.getLong("user_id");
+				users.add(user_id);
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}	
+
+		String dbrfield = "dbscanc";
+		String dbclusterfield = "dbscaneid";
+		String veps = null, st_eps = null, st_et = null, vst_eps = null, vst_et = null;
+		String[] name = clusterName.split("_");
+		clusterName = name[0];
+
+		System.out.println("begin to test");
+		for (int i=0; i<5/*users.size()*/; i++) {
+
+			long user_id = users.get(i);
+			/*long user_id = Long.parseLong("2387742823");*/		
+
+			if (clusterName.equalsIgnoreCase("DBSCANCluster")){
+				DClusters = new DBSCANCluster(user_id, dbName, tableName, eps, minpt, threshold);				
+				dbclusterfield = "dbscaneid_"+(int)eps+"_"+minpt;
+				dbrfield = "dbscanc_"+(int)eps+"_"+minpt;
+				tweetSizes = DClusters.tweetsize;
+				locations = DClusters.locations;
+				noises = DClusters.noiseList;
+
+			} else if (clusterName.equalsIgnoreCase("STDBSCANCluster")){
+
+			} else if (clusterName.equalsIgnoreCase("STDBSCANClusterNew")){
+
+			} else if (clusterName.equalsIgnoreCase("VDBSCANCluster")){
+				VClusters = new VDBSCANCluster(user_id, dbName, tableName,threshold);				
+				dbclusterfield = "vdbscaneid";
+				dbrfield = "vdbscanc";
+				tweetSizes = VClusters.tweetsize;
+				locations = VClusters.locations;
+				noises = VClusters.noiseList;
+			}
+
+			//for (int j=0; j<locations.size(); j++) {
+			Collections.sort(locations, new XCompare());//.sort(locations, new XCompare());
+
+
+			Collections.reverse(locations);
+
+			
+			//db.modifyDB("delete from activityzone_uncertainty" );
+			for (int j=0; j<locations.size(); j++) {
+				ClusteredLocation location = locations.get(j);
+				String locationid = location.GetRepId();
+				sql = " update " +  tableName 
+						+ " set " + dbrfield + "="  +  1
+						+ " where tweet_id = " + locationid ;
+
+
+				//db.modifyDB(sql);
+
+				List<TweetRecord> tweet_list = location.getTweetRecords();
+				JSONArray tweets = new JSONArray();
+				int clusterid = location.GetClusterId()/*j + 1*/;
+
+				int cluster_size = tweet_list.size();
+
+				for (int h=0; h<cluster_size; h++) {
+
+					TweetRecord t = tweet_list.get(h);					
+					String tweet_id = t.getTweetID();
+
+					if (dbclusterfield.equals("vdbscaneid")) {
+						veps = Double.toString(t.getEps());
+					}
+					else if (dbclusterfield.equals("stdbscaneid")){
+						st_eps = Double.toString(t.getEps());
+						st_et = Double.toString(t.getEt());
+					}
+					else if (dbclusterfield.equals("vstdbscaneid")){
+						vst_eps = Double.toString(t.getEps());
+						vst_et = Double.toString(t.getEt());
+					}	
+
+					if(clusterName.equalsIgnoreCase("DBSCANCluster")) {
+						sql = " update " +  tableName 
+
+								+ " set " + dbclusterfield + "= " + clusterid  
+
+								+ " where tweet_id = " + tweet_id ;
+					}else {
+
+						sql = " update " +  tableName 
+								+ " set " + dbclusterfield + "= " + clusterid + ", " 
+
+				            	+ " veps = " + veps /*+ ", "*/
+
+				            	/*+ " vst_et = " + vst_et*/
+
+				            	+ " where tweet_id = " + tweet_id ;
+					}
+
+					//System.out.println(sql);
+					db.modifyDB(sql);
+				}
+				
+				String 	convex_geom = null;
+				String 	mean_geom = null;
+				String 	median_geom  = null;
+				String 	concave_geom = null;
+				
+				int concave_size = 0, convex_size =0;
+				/*
+				 * For each cluster, generate convexhull 
+				 */
+				ArrayList<TweetRecord> convexPoints = location.getConvexHull();
+				System.out.println("cluster id, point and convex size: " + clusterid + "," + tweet_list.size() +"," + convexPoints.size());
+				convex_size  = convexPoints.size();
+				// Need at least 3 points to generate a convexhull
+				if(convex_size > 2) {
+					convex_geom = "ST_GeomFromText('Polygon((";
+					for(int h = 0;  h< convex_size ;  h++){	
+
+						TweetRecord pt = convexPoints.get(h);
+						convex_geom += 	pt.getLongitude()+ " " + pt.getLatitude()+ "," ;
+					}
+					convex_geom += 	convexPoints.get(0).getLongitude() + " " + convexPoints.get(0).getLatitude()  ;
+					convex_geom +=   "))'"+", 4326)";
+				}
+
+				ArrayList<TweetRecord> concavePoints = location.getConcaveHull();
+
+				System.out.println("cluster id, point and concave size: " + clusterid + "," + tweet_list.size() +"," + concavePoints.size());
+
+				concave_size  = concavePoints.size();
+				// Need at least 3 points to generate a convexhull
+				if(concave_size > 2) {
+					concave_geom = "ST_GeomFromText('Polygon((";
+					for(int h = 0;  h< concave_size;  h++){	
+						TweetRecord pt = concavePoints.get(h);
+						concave_geom += 	pt.getLongitude()+ " " + pt.getLatitude()+ "," ;
+					}
+					concave_geom += 	concavePoints.get(0).getLongitude() + " " + concavePoints.get(0).getLatitude()  ;
+					concave_geom +=   "))'"+", 4326)";
+				}			
+
+				double mean_lat = location.GetMeanLatitude();
+				double mean_lon = location.GetMeanLongitude();
+				double median_lat = location.GetLatitude();
+				double median_lon = location.GetLongitude();
+
+				mean_geom = "ST_GeomFromText('POINT("+ mean_lon + " " +mean_lat + ")'"+", 4326)";
+				median_geom = "ST_GeomFromText('POINT("+ median_lon + " " +median_lat + ")'"+", 4326)";	
+				
+				
+				int knearest = 4;
+				
+				
+				if(!clusterName.equalsIgnoreCase("DBSCANCluster")) {
+					eps = location.GetEPS();
+					knearest  = location.GetK();/*VClusters.k;*/
+				}
+				
+			
+
+				String insertClusterSQL = "INSERT INTO " + zoneTable
+						+ "(cid, mean_geom, median_geom, convex_geom, concave_geom, convex_size,  concave_size, cluster_size, clusterName, user_id, eps, minpts , knearest ) VALUES"
+						+ "(" + clusterid + "," + mean_geom + "," + median_geom  + "," + convex_geom + "," + concave_geom + ","+ convex_size + ","+ concave_size + ","
+						+ cluster_size + ",'"+ clusterName +"'," + user_id + ","+ eps +"," + minpt +"," + knearest
+						+");";
+
+				System.out.println(insertClusterSQL);
+				db.modifyDB(insertClusterSQL);
+			}
+
+			for (int j=0; j<noises.size(); j++) {			
+
+				TweetRecord t = noises.get(j);				
+				String tweet_id = t.getTweetID();
+
+				if (dbclusterfield.equals("vdbscaneid")) {
+					veps = Double.toString(t.getEps());
+				}
+				else if (dbclusterfield.equals("stdbscaneid")){
+					st_eps = Double.toString(t.getEps());
+					st_et = Double.toString(t.getEt());
+				}
+				else if (dbclusterfield.equals("vstdbscaneid")){
+					vst_eps = Double.toString(t.getEps());
+					vst_et = Double.toString(t.getEt());
+				}
+
+				if(clusterName.equalsIgnoreCase("DBSCANCluster")) {
+					sql = " update " + tableName 
+
+							+ " set " + dbclusterfield + "= " + 0  
+
+							+ " where tweet_id = " + tweet_id ;
+				}else {
+
+					sql = " update " +  tableName 
+							+ " set " + dbclusterfield + " = 0 " + "," 
+
+			            		+ " veps = " + veps /*+ ", "*/
+
+			            		/*+ " vst_et = " + vst_et*/
+
+			            		+ " where tweet_id = " + tweet_id ;
+				}
+
+				//System.out.println(sql);
+				db.modifyDB(sql);
+			}
+
+			System.out.println("Finished........");
+		}
+	}
+
+	public static void updateDistinctGeomSize(String clusterName, double eps, int minpt, int threshold){
+
+		ArrayList<Long> users = new ArrayList<Long>(); 
+		ArrayList<Integer> tweetSizes = null;
+		ArrayList<ClusteredLocation> locations = null;
+		ArrayList<TweetRecord> noises = null;		
+		/*	String dbName = "madison";
+		String tableName = "mt_ultraselected";*/
+
+		String dbName = "foursquare";
+		String tableName = "chicago_user_tweets";
+		String usertable = tableName + "_users";
+
+		String zoneTable = "activityzone_uncertainty";
+		RelationalDBUtility db = new RelationalDBUtility(dbName);
+		String sql = "";
+
+		sql = " select user_id, location, geosize from " + usertable + " where location ilike '%chicago' and distinct_geosize is null order by geosize desc  ";
+		ResultSet rs = db.queryDB(sql);
+
+
+		Connection  conn;                     // holds database connection 
+		Statement    stmt = null;
+
+		String outServer = "localhost";
+		int outPort = 5432;
+
+		try {
+			Class.forName("org.postgresql.Driver");
+		} catch (ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} //Load the JDBC driver 			
+		/*
+		 * Establish connection to the database at localhost with the port as 5432
+		 * with the username as postgres, password as admin
+		 */
+		System.out.println("Creating JDBC connection...");
+		try {
+			conn = DriverManager.getConnection("jdbc:postgresql://" + outServer + ":" + outPort + "/" + dbName, "postgres", "admin");
+			stmt = conn.createStatement();                    // holds SQL statement 	
+		} catch (SQLException e1) {
+			// TODO Auto-generated catch block
+			e1.printStackTrace();
+		} 
+
+		System.out.println(sql);
+
+		try {
+			while (rs.next()){				
+				long user_id = rs.getLong("user_id");
+				users.add(user_id);
+
+				sql = " update  " + usertable + " set distinct_geosize = v.count " 
+						+  " from ( select count (*) as count from ( select distinct geom as count from  " + tableName + " where user_id = " + user_id  +") as t) v "  
+						+ " where user_id =  " + user_id
+						;
+
+				System.out.println(sql);
+				stmt.execute(sql);		
+				
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}	
+
+		System.out.println("Finished........");
+
+	}
+
+	public class XCompare implements Comparator<ClusteredLocation>
+	{
+		@Override
+		public int compare(ClusteredLocation o1, ClusteredLocation o2) 
+		{
+			return (new Integer(o1.GetSize()).compareTo(new Integer(o2.GetSize())));
+		}
+	}
+
+}

@@ -1,0 +1,366 @@
+package org.social.spatialcluster;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.List;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.social.postgresql.RelationalDBUtility;
+import org.tweet.TweetRecord;
+import org.tweet.location.ClusteredLocation;
+
+public class RunClustering {
+
+	static DBSCANCluster DClusters;
+	static VDBSCANCluster VClusters;
+	static STDBSCANCluster StClusters;
+	static STDBSCANClusterNew VstClusters;
+
+	public static void main(String[] args) {
+
+	//	String clusterName = "DBSCANCluster_300_4";
+		String clusterName = "VDBSCANCluster";
+		String[] name = clusterName.split("_");
+		double eps = 0.0; int minpt = 4;
+		if (name.length>1) {
+			eps = Double.parseDouble(name[1]);
+			minpt = Integer.parseInt(name[2]);
+		}
+		int threshold = 4;
+
+		RunClustering rc = new RunClustering(clusterName, eps, minpt, threshold);		
+	}
+
+	public RunClustering (String clusterName, double eps, int minpt, int threshold){
+
+		ArrayList<Long> users = new ArrayList<Long>(); 
+		ArrayList<Integer> tweetSizes = null;
+		ArrayList<ClusteredLocation> locations = null;
+		ArrayList<TweetRecord> noises = null;		
+		String dbName = "madison";
+		//String tableName = "madisontweets";
+		String tableName = "mt_ultraselected";
+		RelationalDBUtility db = new RelationalDBUtility(dbName);
+		String sql = "";
+
+		//sql = " select distinct user_id from " + tableName + "  where user_id in (15664855, 30897466, 255702030, 318801866, 560268128) ";
+
+	//	sql = " select distinct user_id from " + tableName + "  where user_id in (15664855, 30897466, 255702030, 318801866, 560268128) ";
+
+		sql = " select distinct user_id from " + tableName + "  where user_id in (15664855) ";
+		ResultSet rs = db.queryDB(sql);
+
+		try {
+			while (rs.next()){				
+				long user_id = rs.getLong("user_id");
+				users.add(user_id);
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}	
+
+		String dbrfield = "dbscanc";
+		String dbclusterfield = "dbscaneid";
+		String veps = null, st_eps = null, st_et = null, vst_eps = null, vst_et = null;
+		String[] name = clusterName.split("_");
+		clusterName = name[0];
+
+		System.out.println("begin to test");
+		for (int i=0; i<5/*users.size()*/; i++) {
+
+			long user_id = users.get(i);
+			/*long user_id = Long.parseLong("2387742823");*/		
+
+			if (clusterName.equalsIgnoreCase("DBSCANCluster")){
+				DClusters = new DBSCANCluster(user_id, dbName, tableName, eps, minpt, threshold);				
+				dbclusterfield = "dbscaneid_"+(int)eps+"_"+minpt;
+				dbrfield = "dbscanc_"+(int)eps+"_"+minpt;
+				tweetSizes = DClusters.tweetsize;
+				locations = DClusters.locations;
+				noises = DClusters.noiseList;
+
+			} else if (clusterName.equalsIgnoreCase("STDBSCANCluster")){
+
+			} else if (clusterName.equalsIgnoreCase("STDBSCANClusterNew")){
+
+			} else if (clusterName.equalsIgnoreCase("VDBSCANCluster")){
+				VClusters = new VDBSCANCluster(user_id, dbName, tableName, threshold);				
+				dbclusterfield = "vdbscaneid";
+				dbrfield = "vdbscanc";
+				tweetSizes = VClusters.tweetsize;
+				locations = VClusters.locations;
+				noises = VClusters.noiseList;
+			}
+
+			db.modifyDB("delete from activityzone ;");
+			for (int j=0; j<locations.size(); j++) {
+				ClusteredLocation location = locations.get(j);
+				String locationid = location.GetRepId();
+				sql = " update " +  tableName 
+
+						+ " set " + dbrfield + "="  +  1
+
+						+ " where tweet_id = " + locationid ;
+			
+				
+				//db.modifyDB(sql);
+
+				List<TweetRecord> tweet_list = location.getTweetRecords();
+				JSONArray tweets = new JSONArray();
+				int clusterid= j + 1;
+				
+				int clusterSize = tweet_list.size();
+					
+				for (int h=0; h<clusterSize; h++) {
+
+					TweetRecord t = tweet_list.get(h);					
+					String tweet_id = t.getTweetID();
+
+					if (dbclusterfield.equals("vdbscaneid")) {
+						veps = Double.toString(t.getEps());
+					}
+					else if (dbclusterfield.equals("stdbscaneid")){
+						st_eps = Double.toString(t.getEps());
+						st_et = Double.toString(t.getEt());
+					}
+					else if (dbclusterfield.equals("vstdbscaneid")){
+						vst_eps = Double.toString(t.getEps());
+						vst_et = Double.toString(t.getEt());
+					}	
+
+					if(clusterName.equalsIgnoreCase("DBSCANCluster")) {
+						sql = " update " +  tableName 
+
+								+ " set " + dbclusterfield + "= " + clusterid  
+
+								+ " where tweet_id = " + tweet_id ;
+					}else {
+
+						sql = " update " +  tableName 
+								+ " set " + dbclusterfield + "= " + clusterid + ", " 
+
+				            	+ " veps = " + veps /*+ ", "*/
+
+				            		/*+ " vst_et = " + vst_et*/
+
+				            	+ " where tweet_id = " + tweet_id ;
+					}
+
+					//System.out.println(sql);
+
+					db.modifyDB(sql);
+					
+				}
+				
+				/*
+				 * For each cluster, generate convexhull 
+				 */
+				ArrayList<TweetRecord> postPoints = executeConvexHull( tweet_list);
+				
+				System.out.println("cluster id, point and convex size: " + clusterid + "," + tweet_list.size() +"," + postPoints.size());
+
+				int ptSize = postPoints.size();
+				
+				String 	geom = null;
+				
+				// Need at least 3 points to generate a convexhull
+				if(ptSize > 2) {
+					geom = "ST_GeomFromText('Polygon((";
+					for(int h = 0;  h< ptSize;  h++){	
+
+						TweetRecord pt = postPoints.get(h);
+						geom += 	pt.getLongitude()+ " " + pt.getLatitude()+ "," ;
+					}
+					geom += 	postPoints.get(0).getLongitude() + " " + postPoints.get(0).getLatitude()  ;
+					geom +=   "))'"+", 4326)";
+				}
+				
+				
+
+				String insertClusterSQL = "INSERT INTO activityzone "
+						+ "(cid, geom, pointsize, clusterName , user_id, eps, minpts  ) VALUES"
+						+ "(" + clusterid + "," + geom  + ","+ clusterSize + ",'"+ clusterName +"'," + user_id + ","+ eps +"," + minpt
+						+");";
+
+				System.out.println(insertClusterSQL);
+				db.modifyDB(insertClusterSQL);
+
+			}
+
+			for (int j=0; j<noises.size(); j++) {			
+
+				TweetRecord t = noises.get(j);				
+				String tweet_id = t.getTweetID();
+
+				if (dbclusterfield.equals("vdbscaneid")) {
+					veps = Double.toString(t.getEps());
+				}
+				else if (dbclusterfield.equals("stdbscaneid")){
+					st_eps = Double.toString(t.getEps());
+					st_et = Double.toString(t.getEt());
+				}
+				else if (dbclusterfield.equals("vstdbscaneid")){
+					vst_eps = Double.toString(t.getEps());
+					vst_et = Double.toString(t.getEt());
+				}
+
+
+				if(clusterName.equalsIgnoreCase("DBSCANCluster")) {
+					sql = " update " +  tableName 
+
+							+ " set " + dbclusterfield + "= " + 0  
+
+							+ " where tweet_id = " + tweet_id ;
+				}else {
+
+					sql = " update " +  tableName 
+							+ " set " + dbclusterfield + " = 0 " + "," 
+
+			            		+ " veps = " + veps /*+ ", "*/
+
+			            		/*+ " vst_et = " + vst_et*/
+
+			            		+ " where tweet_id = " + tweet_id ;
+				}
+
+				
+
+				//System.out.println(sql);
+
+				db.modifyDB(sql);
+			}
+
+			System.out.println("Finished........");
+		}
+	}
+
+
+
+	public  void createConvexHull(RelationalDBUtility db, 	ArrayList<ClusteredLocation> locations) {
+
+		String sql = "";
+		System.out.println(locations.size());
+		
+		//db.modifyDB("delete from activityzone ");
+		for(int i = 0; i < locations.size(); i++)
+		{
+			ClusteredLocation location = locations.get(i);
+			/*if(l.size() < 100)
+				continue;*/
+			List<TweetRecord> tweet_list = location.getTweetRecords();
+
+			ArrayList<TweetRecord> postPoints = executeConvexHull( tweet_list);
+			System.out.println("cluster id, point and convex size: " + i + "," + tweet_list.size() +"," + postPoints.size());
+
+			int ptSize = postPoints.size();
+
+			String 	geom = "ST_GeomFromText('Polygon((";
+			for(int j = 0; j < ptSize; j++){	
+
+				TweetRecord pt = postPoints.get(j);
+				geom += 	pt.getLongitude()+ " " + pt.getLatitude()+ "," ;
+			}
+
+			geom += 	postPoints.get(0).getLongitude() + " " + postPoints.get(0).getLatitude()  ;
+
+			geom +=   "))'"+", 4326)";
+			String insertClusterSQL = "INSERT INTO activityzone "
+					+ "(cid, geom, pointsize ) VALUES"
+					+ "(" + i + "," + geom  + ","+ ptSize
+					+");";
+
+			System.out.println(insertClusterSQL);
+			db.modifyDB(insertClusterSQL);
+		}
+	}
+
+	public  void detectZonetyp() {
+		
+	}
+
+	public   ArrayList<TweetRecord> executeConvexHull(List<TweetRecord> points) 
+	{
+		ArrayList<TweetRecord> xSorted = new ArrayList<TweetRecord>(points); 
+		Collections.sort(xSorted, new XCompare());
+
+		int n = xSorted.size();
+
+		TweetRecord[] lUpper = new TweetRecord[n];
+
+		lUpper[0] = xSorted.get(0);
+		lUpper[1] = xSorted.get(1);
+
+		int lUpperSize = 2;
+
+		for (int i = 2; i < n; i++)
+		{
+			lUpper[lUpperSize] = xSorted.get(i);
+			lUpperSize++;
+
+			while (lUpperSize > 2 && !rightTurn(lUpper[lUpperSize - 3], lUpper[lUpperSize - 2], lUpper[lUpperSize - 1]))
+			{
+				// Remove the middle point of the three last
+				lUpper[lUpperSize - 2] = lUpper[lUpperSize - 1];
+				lUpperSize--;
+			}
+		}
+
+		TweetRecord[] lLower = new TweetRecord[n];
+
+		lLower[0] = xSorted.get(n - 1);
+		lLower[1] = xSorted.get(n - 2);
+
+		int lLowerSize = 2;
+
+		for (int i = n - 3; i >= 0; i--)
+		{
+			lLower[lLowerSize] = xSorted.get(i);
+			lLowerSize++;
+
+			while (lLowerSize > 2 && !rightTurn(lLower[lLowerSize - 3], lLower[lLowerSize - 2], lLower[lLowerSize - 1]))
+			{
+				// Remove the middle point of the three last
+				lLower[lLowerSize - 2] = lLower[lLowerSize - 1];
+				lLowerSize--;
+			}
+		}
+
+		ArrayList<TweetRecord> result = new ArrayList<TweetRecord>();
+
+		for (int i = 0; i < lUpperSize; i++)
+		{
+			result.add(lUpper[i]);
+		}
+
+		for (int i = 1; i < lLowerSize - 1; i++)
+		{
+			result.add(lLower[i]);
+		}
+
+		return result;
+	}
+
+
+	private  boolean rightTurn(TweetRecord a, TweetRecord b, TweetRecord c)
+	{
+		return (b.getX()- a.getX())*(c.getY()- a.getY()) - (b.getY() - a.getY())*(c.getX() - a.getX()) > 0;
+	}
+
+	public class XCompare implements Comparator<TweetRecord>
+	{
+		@Override
+		public int compare(TweetRecord o1, TweetRecord o2) 
+		{
+			return (new Double(o1.getX())).compareTo(new Double(o2.getX()));
+		}
+	}
+
+}

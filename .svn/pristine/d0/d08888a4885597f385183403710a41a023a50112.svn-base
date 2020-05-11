@@ -1,0 +1,60 @@
+package org.tweet.location;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import org.social.postgresql.RelationalDBUtility;
+
+import com.vividsolutions.jts.geom.Geometry;
+import com.vividsolutions.jts.geom.MultiPolygon;
+import com.vividsolutions.jts.geom.Polygon;
+import com.vividsolutions.jts.io.WKTReader;
+
+public class LocationInference {
+
+	public HashMap<Geometry, Integer> landUseMap = new HashMap<Geometry, Integer>();
+	public ArrayList<GeoLandUseZone> zones = new ArrayList<GeoLandUseZone>();
+	
+	public LocationInference()
+	{
+		
+	}
+	
+	public void GetAustinLandUseDataFromPostgreSQL() throws com.vividsolutions.jts.io.ParseException
+	{
+		RelationalDBUtility db = new RelationalDBUtility("louis");
+		String query = "select ST_asText(ST_Transform(s.geom, 4326)), zonetype from land_use_planned_2006 as s where geom is not null";
+		System.out.println("query is : " + query);
+		try {
+
+			ResultSet rs = db.queryDB(query);
+			while (rs.next()){
+				String strWkb = rs.getString("ST_AsText");
+				//System.out.println(strWkb);
+				Geometry geom = new WKTReader().read(strWkb);
+				int type = Integer.parseInt(rs.getString("zonetype"));
+				if(geom.getGeometryType() == "MultiPolygon")
+				{
+					MultiPolygon mPolygon = (MultiPolygon) geom;
+					for(int i = 0; i < mPolygon.getNumGeometries(); i++)
+					{
+						Polygon subPolygon = (Polygon)mPolygon.getGeometryN(i);
+						GeoLandUseZone gzone = new GeoLandUseZone(subPolygon, type);
+						zones.add(gzone);
+					}
+				}
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	public static void main(String[] args) {
+		// TODO Auto-generated method stub
+
+	}
+
+}

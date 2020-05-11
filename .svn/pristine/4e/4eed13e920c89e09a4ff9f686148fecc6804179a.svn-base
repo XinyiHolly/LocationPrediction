@@ -1,0 +1,899 @@
+package org.social.spatialcluster;
+
+import java.awt.Point;
+import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Vector;
+
+import org.social.postgresql.RelationalDBUtility;
+import org.tweet.StPoint;
+import org.tweet.TweetPoint;
+import org.tweet.TweetRecord;
+import org.tweet.TwitterUser;
+import org.tweet.VdCoordinate;
+import org.tweet.location.ClusteredLocation;
+
+import dbscan.Utility;
+import dbscan.VDbscan;
+import dbscan.stDbscan;
+import dbscan.stDbscanNew;
+
+class SortbyVEpsDistance implements Comparator<TweetRecord> 
+{
+	@Override
+	public int compare(TweetRecord o1, TweetRecord o2) {
+		return Double.compare(o1.getEps(), o2.getEps());
+	}
+}
+
+class SortbyEpsDistance implements Comparator<TweetRecord>
+{
+	@Override
+	public int compare(TweetRecord o1, TweetRecord o2) {
+		return Double.compare(o1.getEps(), o2.getEps());
+	}
+}
+
+class SortbyVEtDistance implements Comparator<VdCoordinate>
+{
+	@Override
+	public int compare(VdCoordinate o1, VdCoordinate o2) {
+		// TODO Auto-generated method stub
+		return Double.compare(o1.getEt(), o2.getEt());
+	}
+}
+
+class SortbyEtDistance implements Comparator<TweetRecord>
+{
+	@Override
+	public int compare(TweetRecord o1, TweetRecord o2) {
+		// TODO Auto-generated method stub
+		return Double.compare(o1.getEt(), o2.getEt());
+	}
+}
+
+class SortbyKDistance implements Comparator<Double>
+{
+	@Override
+	public int compare(Double d1, Double d2) {
+		return Double.compare(d1, d2);
+	}
+}
+
+public class HotSpot {
+	public ArrayList<ClusteredLocation> locations = new ArrayList<ClusteredLocation>();
+	public ArrayList<TweetRecord> tweets;
+	public static Vector<List> resultList = new Vector<List>();
+	//public static Vector<List> resultList = new Vector<List>();
+	//public ArrayList<Double> timestamps = new ArrayList<Double>();
+	public ArrayList<Integer> tweetsize = new ArrayList<Integer>();
+	public int threshold = 20;
+	
+	public HotSpot(String dbName, String tableName)
+	{
+		ReadUserTweetPoints(dbName, tableName);
+		GetClusters();
+		SplitListToSublist();
+		GetClusteredLocations();
+	}
+	
+	public void ReadUserTweetPoints(String dbase, String tableName)
+	{
+		RelationalDBUtility db = new RelationalDBUtility(dbase);
+		tweets = this.readTweetDataFromPostgresql(db, 32053/*900913*/, tableName); /*Texas: 2163*/
+		
+		// Added by Guiming @ 2016-07-05
+		//WriteSelectedTweetsToCSV(tweets, "C:/Users/sheen/OneDrive/project/WorldWind/DBSCAN/DBSCANtweets.csv", true);
+	}
+	
+	public static String query  = null;
+	@SuppressWarnings("deprecation")
+	public ArrayList<TweetRecord> readTweetDataFromPostgresql(RelationalDBUtility db, int srid, String tableName)
+	{
+		ArrayList<TweetRecord> tweetRecords = new ArrayList<TweetRecord>();
+		String query = "select ST_X(ST_Transform(geom, " + srid + ")) as x, ST_Y(ST_Transform(geom, " + srid 
+				       + ")) as y, ST_X(geom) as lon, ST_Y(geom) as lat, create_at from " + tableName
+				       + " where geom is not null" 
+			           ;
+		query += " order by create_at";
+		try {
+		    ResultSet rs = db.queryDB(query);
+		    boolean b = rs.next();
+			while (rs.next()){						
+				String create_at = (String) rs.getString("create_at");
+				SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+				Date tweetTime = null;
+				try {
+					tweetTime = df.parse(create_at);	
+					
+					// Added by Guiming @ 2016-07-07
+					// only keep tweets on weekdays
+					if(tweetTime.getDay()==0 || tweetTime.getDay()==6)
+						continue;				
+					
+					//keep tweets on weekends
+					//if(tweetTime.getDay()!=0 && tweetTime.getDay()!=6)
+					//	continue;
+					
+					// Added by Xinyi @ 2017-06-19
+					// only keep tweets in certain years
+					/*if(tweetTime.getYear() == 113 || tweetTime.getYear() == 114)
+						continue;*/
+					
+				} catch (ParseException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");
+
+				double lat = rs.getDouble("lat");
+				double lon = rs.getDouble("lon");
+
+				TweetRecord record = new TweetRecord(x, y, 0.0);	
+				//double emotion = rs.getDouble("emotions");
+
+				record.day = tweetTime.getDate();
+				record.month = 1 + tweetTime.getMonth();
+				record.year = 1900 + tweetTime.getYear();
+				record.hour = tweetTime.getHours();
+				record.minute = tweetTime.getMinutes();
+				//record.emotion = emotion;
+				//double time = record.hour + record.minute / 60.0;
+				record.setTime(tweetTime.getTime());
+
+				record.setLatLon(lat, lon);
+
+				tweetRecords.add(record);
+			}
+
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return tweetRecords;
+	}
+	
+	public void GetClusters()
+	{		
+		// parameters in STDBSCAN, will overwrite the default values in class stDbscan
+		resultList.clear();
+		stDbscan.e = 500; // search radius 
+		stDbscan.et = 30.0; // time difference in minutes
+		stDbscan.minpt = 4; // minimum points
+		
+		stDbscan.pointList.clear();			
+		for(int j = 0; j < tweets.size(); j++)
+		{
+			stDbscan.pointList.add(tweets.get(j));								    									
+		}
+		tweetsize.add(stDbscan.pointList.size());
+		try {
+			stDbscan.applyStDbscan();
+		} catch (NumberFormatException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+			
+		int num = 0;
+		boolean flag = false; 
+		Vector<List> clusterList = new Vector<List>();
+		for (int i = 0; i < stDbscan.resultList.size(); i++)
+		{
+			List<TweetRecord> cluster = stDbscan.resultList.get(i);
+			if(cluster.size() < threshold) // used to control if a cluster is a representative cluster
+				continue;
+			clusterList.add(cluster);				
+			//resultList.add(cluster);
+			System.out.print("cluster " + num +  " [" + cluster.size() + "]\n");
+			num ++;
+			flag = true;
+		}			
+		if (flag) {
+			for (int i=0; i<clusterList.size(); i++) {
+				resultList.add(clusterList.get(i));
+			}			
+		}
+				
+		/*VDbscan.pointList.clear();			
+		for(int j = 0; j < tweets.size(); j++)
+		{
+			VdCoordinate point = new VdCoordinate(tweets.get(j).x, tweets.get(j).y);
+			point.setLatLon(tweets.get(j).latitude, tweets.get(j).longitude);
+			VDbscan.pointList.add(point);								    									
+		}		
+		SetEps();
+		//SetEt();
+		tweetsize.add(VDbscan.pointList.size());
+		try {
+			VDbscan.applyVDbscan();
+		} catch (NumberFormatException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}*/
+		
+		/*int num = 0;
+		boolean flag = false; 
+		Vector<List> clusterList = new Vector<List>();
+		for (int i = 0; i < VDbscan.resultList.size(); i++)
+		{
+			List<TweetRecord> cluster = VDbscan.resultList.get(i);
+			if(cluster.size() < threshold) // used to control if a cluster is a representative cluster
+				continue;
+			clusterList.add(cluster);				
+			//resultList.add(cluster);
+			System.out.print("cluster " + num +  " [" + cluster.size() + "]\n");
+			num ++;
+			flag = true;
+		}			
+		if (flag) {
+			for (int i=0; i<clusterList.size(); i++) {
+				resultList.add(clusterList.get(i));
+			}			
+		}*/
+	}
+	
+	public void SetEps()
+	{
+		Vector<TweetRecord> points = (Vector<TweetRecord>)VDbscan.pointList;
+		
+		//get average distance from point(i) to other points
+		double sumDistance = 0;
+		System.out.println("total point size : " + points.size());
+
+		for (int i = 0; i < points.size(); i++) {
+
+			List<Double> distances = new ArrayList<Double>();
+
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				//System.out.println("distance: " +  distance);
+
+				double distance = Math.sqrt((points.get(i).getX() - points.get(j).getX()) * (points.get(i).getX() - points.get(j).getX())
+						+ (points.get(i).getY() - points.get(j).getY()) * (points.get(i).getY() - points.get(j).getY()));
+
+				if (distance > 1100)
+					continue;
+
+				if (distance < 0.1) // same points
+					continue;
+
+				distances.add(distance);
+
+			}
+			
+			double curDistDifference = 0.0;
+			double previousDistDifference, sumDistDifference = 0.0;
+			double averageDistDifference = Double.MIN_VALUE;
+			double averageDistance = 0;
+			double ptNum = 1;
+
+			int disSize = distances.size();
+
+			if(disSize == 0){
+				// noise? remove this points
+		
+				points.remove(i);
+			}else if(disSize == 1){
+				
+				//System.out.println("With only one point : " + distances.get(0) );
+			
+				points.get(i).setEps(distances.get(0));
+				sumDistance += averageDistance;
+
+			}else{
+				//System.out.println("total distance size : " + distances.size());
+
+				Collections.sort(distances);
+				averageDistance = distances.get(0);
+				for(int k=1; k<distances.size(); k++){
+
+					curDistDifference =  distances.get(k) -  distances.get(k-1);
+
+					sumDistDifference += curDistDifference;
+
+					averageDistDifference = sumDistDifference/ptNum; 
+
+					//System.out.println("DistDifference : " + distances.get(k) + "," +  distances.get(k-1) + "," + curDistDifference + "," + averageDistDifference );	
+
+					if ((Math.abs(curDistDifference) > 30 || Math.abs(curDistDifference) > 3 * averageDistDifference && averageDistDifference > 1.0) ) {
+
+						//System.out.println(Double.toString(curDistDifference) + " " + Double.toString(averageDistDifference)) ;
+
+						break;
+					}else{
+						averageDistance += distances.get(k);
+						ptNum++;
+					}
+				}
+
+				averageDistance = averageDistance / ptNum;
+				//System.out.println("averagerge distance: " +  averageDistance);
+				//points.get(i).setEps(averageDistance);
+				sumDistance += averageDistance;				
+			}
+		}
+
+		double avgd = sumDistance / points.size();
+		System.out.println("final average distance : " + avgd);
+		List<Integer> kArray = new ArrayList<Integer>();
+		for (int i = 0; i < points.size(); i++) {
+			int k = 0;
+			double eps = Double.MIN_VALUE;
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				double radius = Math.sqrt((points.get(i).getX() - points.get(j).getX()) * (points.get(i).getX() - points.get(j).getX())
+						+ (points.get(i).getY() - points.get(j).getY()) * (points.get(i).getY() - points.get(j).getY()));
+				if (radius < avgd) {
+					k++;
+					if (radius > eps)
+						eps = radius;
+				}
+			}
+			k = k - 1;  
+			/*if(k>1){ // why > 1???
+				kArray.add(k);
+			}*/
+			if(k>0){
+				kArray.add(k);
+			}
+		
+			points.get(i).setK(k);
+			//points.get(i).setEps(0);
+			//System.out.println(eps);
+		}
+
+		// find mode of k values and calculate eps
+		System.out.println(kArray.toString());
+		int k = VDbscan.getMode(kArray);		
+		int k_ = 5/*(int)Math.log10(points.size())*/;
+		//VDbscan.minpt = k;
+		System.out.println("selected K : " + k);
+		for(int i = 0; i < points.size(); i++) {
+			List<Double> distances = new ArrayList<Double>();
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				double radius = Math.sqrt((points.get(i).getX() - points.get(j).getX()) * (points.get(i).getX() - points.get(j).getX())
+						+ (points.get(i).getY() - points.get(j).getY()) * (points.get(i).getY() - points.get(j).getY()));
+				/*if (radius < avgd) {
+					distances.add(radius);
+				}*/
+				
+				distances.add(radius);
+			}
+			Collections.sort(distances, new SortbyKDistance());
+			//System.out.println(distances.get(k));
+			if (distances.size() == 0)
+				continue;
+			if (distances.size() < (k + 1))
+				points.get(i).setEps(distances.get(distances.size() - 1));
+			else 
+				points.get(i).setEps(distances.get(k));
+		}
+				
+		// sort by kst distance
+		Collections.sort(points, new SortbyVEpsDistance());
+		/*for (int i = 0; i < points.size(); i++) {
+			System.out.println("eps : " + points.get(i).getEps());
+		}*/
+		WriteEpsToCSV(points, "C:/2017Fall/HotSpotEps.csv");		
+
+		// find eps[i] and assign them to points
+		
+		
+		int start = 0;
+		int end = 0;
+		boolean isFlat = true;
+		double curDifference = 0.0;
+		double averageDifference = Double.MIN_VALUE;
+		double sumDifference = 0.0;
+		double y_0 = points.get(0).getEps();
+		double x_0 = 1.0;
+ 		double y_n = points.get(points.size()-1).getEps();
+		double x_n = (double)points.size();
+		for (int i = 0; i < points.size() - 1; i++) {
+			if (points.get(end).getEps() > 10000 || i == points.size() - 2) {
+				double eps = points.get(start-1).getEps();
+				for(; start < points.size(); start++) {
+					points.get(start).setEps(eps);
+				}
+				break;
+			}
+			curDifference = points.get(i + 1).getEps() - points.get(i).getEps();
+			sumDifference += curDifference;
+			if (i == 0){
+				averageDifference = Math.abs(curDifference);
+			}else{
+				averageDifference = sumDifference/i;
+			}
+			//System.out.println("current different, average "  + Double.toString(curDifference) + " " + Double.toString(averageDifference)) ;
+			if (isFlat == false && Math.abs(curDifference) < averageDifference) {
+				isFlat = true;
+				System.out.println("current different, average " + Double.toString(curDifference) + " " + Double.toString(averageDifference)) ;
+				y_n = points.get(i).getEps();
+				x_n = (double)(i+1);
+				double deta_x = x_n - x_0;
+		 		double deta_y = y_n - y_0;
+		 		double A = deta_y/deta_x;
+		 		double B = -1.0;
+		 		double C = y_0 - deta_y/deta_x;
+		 		double maxDistance = 0.0;   
+		 		int knee = (int)x_0 + 1;
+		 		for (int j = start; j <= i; j++) {			
+		 			double y = points.get(j).getEps();
+		 			double x = (double)(j+1);
+		 			double distance = Math.abs(A*x+B*y+C)/Math.sqrt(A*A+B*B);
+		 			if (distance > maxDistance) {
+		 				maxDistance = distance;
+		 				knee = j;
+		 			}
+		 		}   		
+				double eps = points.get(knee).getEps();				
+				if (eps > 200) {
+					eps = points.get(start-1).getEps();
+					for (; start < points.size(); start++) {
+						points.get(start).setEps(eps);
+					}
+					break;
+				}
+				System.out.println("eps: " + eps);
+				for (; start < end; start++) {
+					points.get(start).setEps(eps);
+				}
+				y_0 = points.get(i).getEps();
+				x_0 = (double)(i+1);
+				//start++;
+				averageDifference = Double.MIN_VALUE;
+				curDifference = 0.0;
+			} else {
+				if (Math.abs(curDifference) > 4 * averageDifference && averageDifference > 0.0) {
+					isFlat = false;
+				} else if (Math.abs(curDifference) > averageDifference){
+					averageDifference = Math.abs(curDifference);
+				}
+			}					
+			end++;
+		}
+	}
+	
+	public double CalculateKnee() {
+		String csvFile = "C:/2017Fall/Points.csv";
+        BufferedReader br = null;
+        String line = "";
+        String cvsSplitBy = " ";
+        List<Double> distanceValues = new ArrayList<Double>();
+        int knee = 0;
+        try {
+            br = new BufferedReader(new FileReader(csvFile));
+            while ((line = br.readLine()) != null) {
+                // use comma as separator
+                String[] distances = line.split(cvsSplitBy);
+                for (int i=0; i<distances.length; i++) {
+                	double distance = Double.parseDouble(distances[i]);
+                	distanceValues.add(distance);
+                }
+            }
+            Collections.sort(distanceValues, new SortbyKDistance());
+            double y_0 = distanceValues.get(0);
+            double x_n = distanceValues.size();
+    		double y_n = distanceValues.get(distanceValues.size()-1);
+    		double deta_x = x_n - 1.0;
+    		double deta_y = y_n - y_0;
+    		double A = deta_y/deta_x;
+    		double B = -1.0;
+    		double C = y_0 - deta_y/deta_x;
+    		double maxDistance = 0.0;   		
+    		for (int i = 0; i < distanceValues.size(); i++) {			
+    			double y = distanceValues.get(i);
+    			double x = (double)(i+1);
+    			double distance = Math.abs(A*x+B*y+C)/Math.sqrt(A*A+B*B);
+    			if (distance > maxDistance) {
+    				maxDistance = distance;
+    				knee = i;
+    			}
+    		}   		
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (br != null) {
+                try {
+                    br.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return distanceValues.get(knee);
+	}
+	
+	public void SetEt()
+	{
+		Vector<TweetRecord> points = (Vector<TweetRecord>)VDbscan.pointList;
+		
+		//get average distance from point(i) to other points
+		double sumDistance = 0;
+		System.out.println("total point size : " + points.size());
+
+		for (int i = 0; i < points.size(); i++) {
+
+			List<Double> distances = new ArrayList<Double>();
+
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				//System.out.println("distance: " +  distance);
+
+				double distance = Math.abs(points.get(i).getMinuteTime() - points.get(j).getMinuteTime()); 
+
+				if (distance > 5000)
+					continue;
+
+				if (distance < 0.1) // same points
+					continue;
+
+				distances.add(distance);
+
+			}
+			
+			double curDistDifference = 0.0;
+			double previousDistDifference, sumDistDifference = 0.0;
+			double averageDistDifference = Double.MIN_VALUE;
+			double averageDistance = 0;
+			double ptNum = 1;
+
+
+			int disSize = distances.size();
+
+			if(disSize == 0){
+				// noise? remove this points
+		
+				points.remove(i);
+			}else if(disSize == 1){
+				
+				//System.out.println("With only one point : " + distances.get(0) );
+			
+				points.get(i).setEps(distances.get(0));
+				sumDistance += averageDistance;
+
+			}else{
+				//System.out.println("total distance size : " + distances.size());
+
+				Collections.sort(distances);
+				averageDistance = distances.get(0);
+				for(int k=1; k< distances.size();k++){
+
+
+					curDistDifference =  distances.get(k) -  distances.get(k-1);
+
+					sumDistDifference += curDistDifference;
+
+					averageDistDifference = sumDistDifference/ptNum; 
+
+					//System.out.println("DistDifference : " + distances.get(k) + "," +  distances.get(k-1) + "," + curDistDifference + "," + averageDistDifference );	
+
+					if ((Math.abs(curDistDifference) > 30 || Math.abs(curDistDifference) > 3 * averageDistDifference && averageDistDifference > 1.0) ) {
+
+						//System.out.println(Double.toString(curDistDifference) + " " + Double.toString(averageDistDifference)) ;
+
+						break;
+					}else{
+						averageDistance += distances.get(k);
+						ptNum++;
+					}
+				}
+
+				averageDistance = averageDistance / ptNum;
+				//System.out.println("averagerge distance: " +  averageDistance);
+				points.get(i).setEps(averageDistance);
+				sumDistance += averageDistance;				
+			}
+		}
+
+		double avgd = sumDistance / points.size();
+		System.out.println("final average distance : " + avgd);
+		List<Integer> kArray = new ArrayList<Integer>();
+		for (int i = 0; i < points.size(); i++) {
+			int k = 0;
+			double eps = Double.MIN_VALUE;
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				double radius = Math.sqrt((points.get(i).getX() - points.get(j).getX()) * (points.get(i).getX() - points.get(j).getX())
+						+ (points.get(i).getY() - points.get(j).getY()) * (points.get(i).getY() - points.get(j).getY()));
+				if (radius < avgd) {
+					k++;
+					if (radius > eps)
+						eps = radius;
+				}
+			}
+			k = k - 1;
+			if(k>1){
+				kArray.add(k);
+			}
+		
+			points.get(i).setK(k);
+			points.get(i).setEps(0);
+			//System.out.println(eps);
+		}
+
+		// find mode of k values and calculate eps
+		System.out.println(kArray.toString());
+		int k = VDbscan.getMode(kArray);
+		System.out.println("selected K : " + k);
+		for(int i = 0; i < points.size(); i++) {
+			List<Double> distances = new ArrayList<Double>();
+			for (int j = 0; j < points.size(); j++) {
+				if (i == j)
+					continue;
+				double radius = Math.sqrt((points.get(i).getX() - points.get(j).getX()) * (points.get(i).getX() - points.get(j).getX())
+						+ (points.get(i).getY() - points.get(j).getY()) * (points.get(i).getY() - points.get(j).getY()));
+				/*if (radius < avgd) {
+					distances.add(radius);
+				}*/
+				
+				distances.add(radius);
+			}
+			Collections.sort(distances, new SortbyKDistance());
+			//System.out.println(distances.get(k));
+			if (distances.size() == 0)
+				continue;
+			if (distances.size() < (k + 1))
+				points.get(i).setEps(distances.get(distances.size() - 1));
+			else
+				points.get(i).setEps(distances.get(k));
+		}
+	}
+
+	public TweetPoint GetGeoCoordinate(List<TweetRecord> points, double x, double y)
+	{
+		TweetPoint pt = new TweetPoint();
+		for(int i = 0; i < points.size(); i++)
+		{
+			if(Math.abs(x - points.get(i).x) < 1 && Math.abs(y - points.get(i).y) < 1)
+			{
+				pt.latitude = points.get(i).getLatitude();
+				pt.longitude = points.get(i).getLongitude();
+			}
+		}
+		return pt;
+	}
+
+	public class XCompare implements Comparator<Point>
+	{
+		@Override
+		public int compare(Point o1, Point o2) 
+		{
+			return (new Integer(o1.x)).compareTo(new Integer(o2.x));
+		}
+	}	
+	
+	public void SplitListToSublist()
+	{	
+		// Define a list to accommodate clusters in different areas
+		/*List<Vector<int[]>> childList = new ArrayList<Vector<int[]>>();
+		Vector<int[]> tempList = new Vector<int[]>();*/
+		List<Vector<Integer>> childList = new ArrayList<Vector<Integer>>();
+		Vector<Integer> tempList = new Vector<Integer>();
+        //int[] tempList = new int[2];
+        //double x0 = ((TweetRecord)resultList.get(0).get(0)).getX();
+        //double y0 = ((TweetRecord)resultList.get(0).get(0)).getY();
+        double x0, y0;
+        if (resultList != null) {
+        	// eliminate the redundant clusters
+        	for (int i=0; i<resultList.size(); i++) {
+        		boolean flag = false;
+        		TweetRecord tweet = (TweetRecord)resultList.get(i).get(0);
+    			double x = tweet.getX();
+                double y = tweet.getY();
+                for (int j=0; j<childList.size(); j++) {
+                	tempList = childList.get(j);
+                	/*int timeLayer = tempList.get(0)[0];
+                	int listIndex = tempList.get(0)[1];*/
+                	int timeLayer = tempList.get(0);
+                	//int listIndex = tempList.get(0)[1];
+                	/*x0 = ((TweetRecord)resultList.get(timeLayer).get(listIndex).get(0)).getX();
+            		y0 = ((TweetRecord)resultList.get(timeLayer).get(listIndex).get(0)).getY();*/
+                	x0 = ((TweetRecord)resultList.get(timeLayer).get(0)).getX();
+            		y0 = ((TweetRecord)resultList.get(timeLayer).get(0)).getY();
+            		double distance = (x-x0)*(x-x0)+(y-y0)*(y-y0);
+            		if (distance < 9E10) {
+            			tempList.add(i);
+                        flag = true;
+                        break;
+                    } 
+                }
+                if (!flag)
+            	{
+                    tempList = new Vector<Integer>();
+                    int[] indexPair = new int[2];
+                    tempList.add(i);
+                    childList.add(tempList);
+            	}   
+        	}
+        }
+        
+        Comparator<Vector<Integer>> comparator = new Comparator<Vector<Integer>>()
+		{
+	        @Override
+	        public int compare(Vector<Integer> l1, Vector<Integer> l2) {	        	
+		        return (int) (l2.size() - l1.size());
+	        }
+		};
+		Collections.sort(childList, comparator);
+		
+		//Map<Integer, Vector<List>> resultCopy = new HashMap<Integer, Vector<List>>(resultList);
+		Vector<List> resultCopy = (Vector<List>)resultList.clone(); 
+		resultList.clear();
+		tempList = (Vector<Integer>)childList.get(0).clone();
+		for (int i=0; i<tempList.size(); i++)
+		{
+			int timeLayer = tempList.get(i);
+			resultList.add(resultCopy.get(timeLayer));
+		}				
+    }
+		
+	public void GetClusteredLocations() {
+		
+		ArrayList<TweetRecord> postTweets = new ArrayList<TweetRecord>();
+		int index = 0;
+		
+		double sumPer = 0.0;
+		for (int i=0; i<resultList.size(); i++) {
+			//List<VdCoordinate> cluster = resultList.get(i);	
+			List<TweetRecord> records = resultList.get(i);
+			Vector<List> clusterVector = new Vector<List>();
+			clusterVector.add(records);
+			int clusterSize = records.size();
+			/*int tweetSize = tweetsize.get(clusterIndex);
+			double percentage = clusterSize * 1.0 /tweetSize; 
+*/
+			//System.out.println("cluster point size>> " + clusterSize + "," + percentage);
+			if(clusterSize > 5)// || percentage > threshold 
+			{
+			    ClusteredLocation location = new ClusteredLocation(index);
+				location.SetSize(records.size());
+				/*location.SetPercentage(percentage);
+				sumPer += percentage;*/
+				location.setTweetRecords(records);
+				double sumLat, sumLon, sumX, sumY;
+				sumLat = sumLon = sumX = sumY = 0;
+				
+				int centerIndex = 0, mostSum = 0;
+				for(int j = 0; j < records.size(); j++)
+				{			
+					TweetRecord record = (TweetRecord) records.get(j);
+					record.setPlace(index);
+					postTweets.add(record);
+					
+					int neighborSum = 0;
+					for (int k=0; k < records.size(); k++) {
+						TweetRecord q = records.get(k);
+						if(Utility.getDistance(record,q)<=record.getEps() && Utility.getTimeDistance(record, q)<=record.getEt())
+						{
+							neighborSum += 1;
+						}
+					}
+					if (neighborSum > mostSum) {
+						mostSum = neighborSum;
+						centerIndex = j;
+					}			
+					sumLat += record.getLatitude();
+					sumLon += record.getLongitude();
+					sumX += record.x;
+					sumY += record.y;
+				}
+				
+/****************************Geometric mean**************************************/				
+				/*double centroidLat = sumLat / location.GetSize();
+				double centroidLon = sumLon / location.GetSize();
+				double centroidx = sumX / location.GetSize();
+				double centroidy = sumY / location.GetSize();*/
+/****************************Geometric mean**************************************/
+				
+/***************************Geometric median*************************************/
+				TweetRecord centroid = (TweetRecord) records.get(centerIndex);
+				double centroidLat = centroid.latitude;
+				double centroidLon = centroid.longitude;
+				double centroidx = centroid.getX();
+				double centroidy = centroid.getY();
+/***************************Geometric median*************************************/
+				
+				location.SetLatLon(centroidLat, centroidLon);		
+				location.SetXY(centroidx, centroidy);	
+							
+				/*location.GetConvexGeometry();*/
+				locations.add(location);
+				index++;
+			}  
+		}
+		double averagePer = sumPer/locations.size();
+		System.out.println(averagePer);
+		
+		Comparator<ClusteredLocation> comparator = new Comparator<ClusteredLocation>()
+		{
+	        @Override
+	        public int compare(ClusteredLocation l1, ClusteredLocation l2) {	        	
+		        return (int) (l1.startTime - l2.startTime);
+	        }
+		};
+		Collections.sort(locations, comparator);
+		WriteClusteredLocationsToCSV(locations, "C:/2017Fall/Locations.csv");
+	}
+	
+    // Added by Guiming @ 2016-07-05
+    /*write tweets to csv*/
+    private static void WriteClusteredLocationsToCSV(ArrayList<ClusteredLocation> locations, String Filename){
+	    try
+		    {
+		        FileWriter writer = new FileWriter(Filename);
+			 
+		        for(int i = 0; i < locations.size(); i++) {
+				
+		    	    ClusteredLocation location = locations.get(i);
+		    	
+			        writer.append(Double.toString(location.longitude));
+			        writer.append(',');
+			        writer.append(Double.toString(location.latitude));
+			        writer.append('\n');
+			    }				
+		    //generate whatever data you want			
+		    writer.flush();
+		    writer.close();
+		}
+		catch(IOException e)
+		{
+		    e.printStackTrace();
+		} 
+    } 
+ 
+    /*write Eps values to csv*/
+    private static void WriteEpsToCSV(Vector<TweetRecord> points, String Filename){
+	    try {
+	        FileWriter writer = new FileWriter(Filename);
+		 
+	        for(int i = 0; i < points.size(); i++){
+			
+	        	TweetRecord point = points.get(i);
+	    	
+	    	    if(point.getEps() > -0.000001){
+			        writer.append(Double.toString(point.getEps()));
+			        writer.append('\n');
+	    	    }
+	    	    else{System.out.println("error");}
+		    
+	        }				
+	        //generate whatever data you want
+			
+	        writer.flush();
+	        writer.close();
+	    }
+		catch(IOException e)
+		{
+			e.printStackTrace();
+		} 
+    } 
+    
+}

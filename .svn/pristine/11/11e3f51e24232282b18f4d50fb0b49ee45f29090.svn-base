@@ -1,0 +1,835 @@
+package org.social.spatialcluster;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.social.dataprep.RelationalDBUtility;
+import org.tweet.TweetRecord;
+import org.tweet.VdCoordinate;
+import org.tweet.location.ClusteredLocation;
+
+/**
+ * Location Prediction Project
+ * Apply multiple spatial clustering methods to aggregate travel trajectory data, detect activity zone types and evaluate each type
+ * @author Xinyi Liu
+ */
+public class LocationPrediction {
+
+	private List<Long> users;
+	private List<TweetRecord> tweets;
+	private List<List<?>> resultList;
+	private List<ClusteredLocation> locations;
+		
+	private String clusterName;						   /** Spatial clustering mode, e.g., "MDBSCAN", "DBSCAN_50_4" */		
+	private String  centerName;  					   /** Zone center detection mode, e.g., "median", "mean" */		
+	private String    sortName;  	  				   /** Activity detection mode, e.g., "MAX_VOTES_DR"(with drinking type), "MAX_VOTES" */
+	private int      threshold;  					   /** Smallest point amount to form an eligible cluster */
+	
+	private final String dbName      = "madison_gps";  /** DB: "madison_gps", "la", "madison" */
+	private final String tweetsTable = "records_test"; /** Tweet/GPS records, e.g., "records_test", "latweets", "mt_ultraselected" */
+	private final String zoneTable   = "activityzone"; /** Activity zones detected by clustering, e.g., "activityzone" */
+	private final String referTable  = "user_poi";     /** User reported locations, e.g., "user_poi" */
+	private RelationalDBUtility db; 
+	
+	private final String user_field  = "subid";        /** Name of the field representing user id, e.g., "user_id", "subid" */
+	private final String tweet_field = "id";           /** Name of the field representing record id, e.g., "tweet_id", "id" */
+	private final String location_id = "lid";	       /** Name of the field representing reported location id, e.g., "lid" */;
+	private       String dbclusterfield;        	   /** Name of the field representing cluster id, e.g., "mdbscanid", "dbscanid_50_4" */
+	private       String dbrfield;		       		   /** Name of the field representing cluster center, e.g., "mdbscanc", "dbscanc_50_4" */
+	private       String zonetypefield;         	   /** Name of the field representing zonetype using a specific clustering method, e.g., "zone_mdbscan", "zone_dbscan_50" */
+	private final int nexttime          = 5;		   /** value of frequency field e.g., "nexttime = 5" */
+	private final int activity_buffer   = 100;		   /** Buffer zone size for activity zone type detection */
+	private final int buffer_zone       = 300;		   /** Buffer zone size for activity clustering method */
+	private final int evaluation_buffer = 100;		   /** Buffer zone size for evaluating activity zone type detection/prediction */
+	
+	private Map<String, List<String>> placeTypeMap = new HashMap<>(); /** Type mapping between reported location placetypes and activity zone types*/
+
+	/**
+	 * Main entry point of the project. 
+	 * @param args [Flag1 Flag2 Flag3].<br>
+	 * Flag1|2|3 can be 0, 1, 2. Flag value of 1 or 0 indicates a correspondent method will be run or not. Value of 2 indicates a looping execution<br>
+	 * <table border="1">
+	 * 	<caption>Input Flags</caption>
+	 * 	<tr>
+	 * 		<td>Flag1 = 1</td>
+	 * 		<td>RUN a single clustering (MDBSCAN/DBSCAN).</td>
+	 * 	</tr>
+	 * 	<tr>
+	 * 		<td>Flag1 = 0</td>
+	 * 		<td>NOT run clustering.</td>
+	 * 	</tr>
+	 *  <tr>
+	 * 		<td>Flag1 = 2</td>
+	 * 		<td>RUN a series of DBSCAN with different eps.</td>
+	 * 	</tr>
+	 * 	<tr>
+	 * 		<td>Flag2 = 1</td>
+	 * 		<td>RUN activity type detection</td>
+	 * 	</tr>
+	 * 	<tr>
+	 * 		<td>Flag2 = 0</td>
+	 * 		<td>NOT run activity type detection</td>
+	 * 	</tr>
+	 * 	<tr>
+	 * 		<td>Flag3 = 1</td>
+	 * 		<td>RUN prediction evaluate</td>
+	 * 	</tr>
+	 * 	<tr>
+	 * 		<td>Flag3 = 0</td>
+	 * 		<td>NOT run prediction evaluate</td>
+	 * 	</tr>
+	 * </table>
+	 */
+	public static void main(String[] args) {
+		
+		// Argument count.
+		if(args.length <= 0 || args.length > 3) {
+			System.out.println("Please enter valid arguments: [<Flag1> <Flag2> <Flag3>]");
+			return;
+		}
+		String clusterName = "MDBSCAN";
+		String sortName = "MAX_VOTES_DR";
+		String centerName = "median";
+		int threshold = 4;		
+
+		switch(args[0]) {
+			// case 1: run single spatial clustering method
+			case "1":
+			{
+				LocationPrediction instance = new LocationPrediction(clusterName, centerName, sortName, threshold);
+				
+				// Step 1: get activity zones by applying selected clustering method.
+				instance.RunClustering();
+				
+				// Step 2: detect activity zone types.
+				if (args[1].equals("1"))
+					instance.ActivityTypeDetection();
+
+				// Step 3: get the accuracy of predicted activity types and update table "user_poi" to update fields: "accuracy", "activityzonetype".
+				if (args[2].equals("1"))
+					instance.PredictionEvaluate();
+			}
+			// case 2: run multiple DBSCAN clusterings with different eps values
+			case "2":
+			{
+				for (int i = 1; i <= 3; i++) {
+					int index = i * 100;
+					clusterName = "DBSCAN_" + index + "_4";
+					LocationPrediction instance = new LocationPrediction(clusterName, centerName, sortName, threshold);
+					
+					// Step 1.
+					instance.RunClustering();
+					
+					// Step 2.
+					if (args[1].equals("1"))
+						instance.ActivityTypeDetection();
+
+					// Step 3.
+					if (args[2].equals("1"))
+						instance.PredictionEvaluate();
+				}
+			}
+			// case 3: run multiple HotSpot clusterings with different eps values
+			case "3":
+			{
+				int index = 25; 
+				for (int i = 1; i <= 3; i++) {
+					index *= 2;
+					clusterName = "HotSpot_" + index + "_4";
+					LocationPrediction instance = new LocationPrediction(clusterName, centerName, sortName, threshold);
+					
+					// Step 1.
+					instance.RunClustering();
+					
+					// Step 2.
+					if (args[1].equals("1"))
+						instance.ActivityTypeDetection();
+
+					// Step 3.
+					if (args[2].equals("1"))
+						instance.PredictionEvaluate();
+				}
+			}
+			// case 0: not run spatial clustering
+			case "0":
+			{
+				LocationPrediction instance = new LocationPrediction(clusterName, centerName, sortName, threshold);
+				
+				// Step 2.
+				if (args[1].equals("1"))
+					instance.ActivityTypeDetection();
+	
+				// Step 3.
+				if (args[2].equals("1"))
+					instance.PredictionEvaluate();
+			}
+		}	
+	}
+	
+	/**
+	 * Default constructor.
+	 * @param clusterName Spatial clustering mode.
+	 * @param centerName Cluster center detection mode.
+	 * @param sortName Activity zone type detection mode.
+	 * @param threshold Minimum point amount to form an eligible cluster.
+	 */
+	public LocationPrediction(String clusterName, String centerName, String sortName, int threshold) {				
+		this.clusterName = clusterName;
+		this.centerName = centerName;
+		this.sortName = sortName;
+		this.threshold = threshold;
+		this.db = new RelationalDBUtility(dbName);
+		
+		String[] name = clusterName.split("_");
+		double eps = 0.0;		
+		int minpt = 0;
+		String nameHead = name[0];	
+		
+		users = new ArrayList<>();
+		if (nameHead.equals("HotSpot")) {
+			users.add((long) 0);
+		} else {
+			//String sql = " select distinct " + user_field + " as user_id from " + tweetsTable;
+			String sql = " select distinct " + user_field + " as user_id from " + tweetsTable + " where " + user_field + " in (51) ";
+			ResultSet rs = db.queryDB(sql);
+			try {
+				while (rs.next()){				
+					long user_id = rs.getLong("user_id");
+					users.add(user_id);
+				}
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		
+		if (nameHead.equalsIgnoreCase("DBSCAN") && name.length > 1) {		
+			eps = Double.parseDouble(name[1]);
+			minpt = Integer.parseInt(name[2]);
+			dbclusterfield = "dbscanid_" + (int)eps + "_" + minpt;
+			dbrfield = "dbscanc_" + (int)eps + "_" + minpt;
+			zonetypefield = "zone_dbscan_" + (int)eps;
+			
+		} else if (nameHead.equalsIgnoreCase("VDBSCAN")) {
+			dbclusterfield = "vdbscanid";
+			dbrfield = "vdbscanc";
+			
+		} else if (nameHead.equalsIgnoreCase("MDBSCAN")) {
+			dbclusterfield = "mdbscanid";
+			dbrfield = "mdbscanc";
+			zonetypefield = "zone_mdbscan";
+			
+		} else if (nameHead.equalsIgnoreCase("ActivityCluster")) {
+			dbclusterfield = "smtcid";
+			dbrfield = "smtcc";
+			
+		} else if (nameHead.equalsIgnoreCase("HotSpot") && name.length > 1) {
+			eps = Double.parseDouble(name[1]);
+			minpt = Integer.parseInt(name[2]);
+			dbclusterfield = "hotid_" + (int)eps + "_" + minpt;
+			dbrfield = "hotc_" + (int)eps + "_" + minpt;
+			zonetypefield = "zone_hotspot_" + (int)eps;
+			
+		} else if (nameHead.equalsIgnoreCase("HotSpot")) {
+			dbclusterfield = "hotspotid";
+			dbrfield = "hotspotc";
+			zonetypefield = "zone_hotspot";
+		}
+	}
+	
+	/**
+	 * Initialize placeTypeMap. Applied before evaluating activity zone type detection results.
+	 */
+	private void initialNameCategory() {
+		List<String> homeType = Arrays.asList("HOME", "HOME OF FAMILY MEMBER", "HOME OF FRIEND");
+		List<String> workType = Arrays.asList("WORK");
+		List<String> eatingType = Arrays.asList("RESTAURANT", "COFFEE SHOP/CAFE");
+		List<String> drinkingType = Arrays.asList("BAR", "LIQUOR STORE");
+		List<String> entertainmentType = Arrays.asList("GYM/FITNESS CENTER", "AA/RECOVERY MEETING", "PARK");
+		List<String> shoppingType = Arrays.asList("ERRANDS");
+		List<String> educationType =  Arrays.asList("SCHOOL");
+		List<String> healthType = Arrays.asList("HEALTH CARE");
+		List<String> serviceType = Arrays.asList("VOLUNTEER", "CHURCH");
+		List<String> otherType = Arrays.asList("OTHER", "CHEKC AT F2", "NA");
+		
+		placeTypeMap.put("Dwelling", homeType);
+		placeTypeMap.put("Work", workType);
+		placeTypeMap.put("Eating", eatingType);
+		placeTypeMap.put("Drinking", drinkingType);
+		placeTypeMap.put("Entertainment", entertainmentType);
+		placeTypeMap.put("Shopping", shoppingType);
+		placeTypeMap.put("Health", healthType);
+		placeTypeMap.put("Education", educationType);
+		placeTypeMap.put("Service", serviceType);	
+		placeTypeMap.put("Others", otherType);
+	}
+	
+	/**
+	 * Perform spatial clustering and cluster center detection, 
+	 * then update the trajectory records table and activity zone table.
+	 */
+	private void RunClustering() {	
+		System.out.println("begin to test RunClustering");
+		String[] name = clusterName.split("_");
+		String nameHead = name[0];	
+		if (nameHead.equals("HotSpot") && name.length == 1) {
+			// Merge hotspots generated using DBSCAN with different eps values.
+			// Options: HDBSCAN/OPTICS/MDBSCAN.
+			mergeHotSpots();
+		
+		} else {
+			for (int i = 0; i < users.size(); i++) {	
+				long user_id = users.get(i);
+				ReadUserTweetPoints(user_id);
+				
+				SpatialCluster spatialCluster = this.getClusters(clusterName);
+				resultList = spatialCluster.cluster();
+				RepresentativeLocation representativeLocation = this.getCentroids(centerName);
+				locations = representativeLocation.center(clusterName);
+				
+				// Update database after detection.
+				updateClusteringResult(user_id);				
+			}
+		}
+		System.out.println("Finished........");
+	}
+	
+	/**
+	 * Spatial clustering helper.
+	 * @param clusterName.
+	 */
+	private SpatialCluster getClusters(String clusterName) {
+		if (clusterName == null) {
+			return null;
+		}
+		String[] name = clusterName.split("_");
+		double eps = 0.0;		
+		int minpt = 0;
+		String nameHead = name[0];	
+		if (nameHead.equalsIgnoreCase("DBSCAN") && name.length > 1) {		
+			eps = Double.parseDouble(name[1]);
+			minpt = Integer.parseInt(name[2]);
+			return new DBSCANCluster(tweets, eps, minpt, threshold);
+			
+		} /*else if (nameHead.equalsIgnoreCase("VDBSCAN")) {
+			return new VDBSCANCluster(tweets, threshold);
+			
+		} */else if (nameHead.equalsIgnoreCase("MDBSCAN")) {
+			return new MDBSCANCluster(tweets, threshold);
+			
+		} else if (nameHead.equalsIgnoreCase("ActivityCluster")) {
+			return new ActivityCluster(tweets, threshold, buffer_zone, dbName, tweetsTable, zoneTable);
+		
+		} else if (nameHead.equalsIgnoreCase("HotSpot") && name.length > 1) {
+			eps = Double.parseDouble(name[1]);
+			minpt = Integer.parseInt(name[2]);
+			return new DBSCANCluster(tweets, eps, minpt, threshold);
+		}
+		return null;
+	}
+	
+	/**
+	 * Cluster center detection helper.
+	 * @param centerName.
+	 */
+	private RepresentativeLocation getCentroids(String centerName) {
+		if (centerName == null) {
+			return null;
+		}
+		if (centerName.equalsIgnoreCase("MEAN")) {		
+			return new GeometricMean(resultList);
+			
+		} else if (centerName.equalsIgnoreCase("MEDIAN")) {
+			return new GeometricMedian(resultList);
+		}
+		return null;
+	}		
+	
+	/**
+	 * Perform activity zone type detection and update the trajectory records table and activity zone table.
+	 */
+	private void ActivityTypeDetection() {
+		
+		System.out.println("begin to test ActivityTypeDetection");
+		
+		for (int i = 0; i < users.size(); i++) {			
+			long user_id = users.get(i);
+			ActivityType activityType = this.getTypes(sortName);
+			activityType.setActivityType(user_id, clusterName);
+		}	
+		System.out.println("Finished........");
+	}
+	
+	/**
+	 * Activity zone type detection helper.
+	 * @param sortName.
+	 */
+	private ActivityType getTypes(String sortName) {
+		if (sortName.equalsIgnoreCase("MAX_VOTES")) {				
+			return new MaximumVotes(db, zoneTable, tweetsTable, dbclusterfield, zonetypefield, activity_buffer, nexttime);
+			
+		} else if (sortName.equalsIgnoreCase("MAX_VOTES_DR")) {				
+			return new MaximumVotesWithDrinkingType(db, zoneTable, tweetsTable, dbclusterfield, zonetypefield, activity_buffer, nexttime);
+		} 
+		return null;
+	}
+	
+	
+	/**
+	 * Update database after spatial clustering and cluster center detection 
+	 * @param user_id
+	 * @param clusterName
+	 * */
+	private void updateClusteringResult(long user_id) {
+		
+		String idSelect = " is not null";
+		if (user_id != 0) {
+			idSelect = " = " + user_id;
+		}
+		// Reset a specific user's trajectory records by setting their cluster id, cluster center id and meps/veps value as default(0).
+		String clearSQL = " update " +  tweetsTable 
+						+ " set " + dbrfield + " = 0, "
+						+ dbclusterfield + " = 0 " + "," 
+						+ " meps = 0, "
+						+ " veps = 0 "
+						+ " where " + user_field + idSelect;
+		db.modifyDB(clearSQL);
+		
+		// Clear a specific user's activity zone detection results.
+		String deleteSQL = "delete from " + zoneTable + " where clustername = '" + clusterName + "' and user_id" + idSelect;
+		db.modifyDB(deleteSQL);
+		
+		String veps = null;
+		String eps_field = null;		
+		for (int j = 0; j < locations.size(); j++) {
+			ClusteredLocation location = locations.get(j);
+			long locationid = location.getRepId();
+			
+			// Set cluster center id.
+			String sql = " update " +  tweetsTable 
+					   + " set " + dbrfield + "="  +  1
+					   + " where " + tweet_field + " = " + locationid ;				
+			db.modifyDB(sql);
+
+			List<?> tweet_list = location.getTweetRecords();
+			int clusterid = location.getClusterId();			
+			int clusterSize = tweet_list.size();
+			
+			// Set cluster id.
+			String prefix = " update " +  tweetsTable 
+				          + " set " + dbclusterfield + " = " + clusterid ;
+				
+			if (clusterName.equalsIgnoreCase("MDBSCAN")) {
+				eps_field = "meps";
+			} else if (clusterName.equalsIgnoreCase("VDBSCAN")){
+				eps_field = "veps";
+			}
+			
+			for (int h = 0; h < clusterSize; h++) {	
+				TweetRecord t = (TweetRecord)tweet_list.get(h);
+				long tweet_id = t.getTweetID();
+				sql = prefix;
+				// Set meps/veps for MDBSCAN/VDBSCAN methods.
+				if (clusterName.equalsIgnoreCase("MDBSCAN") || clusterName.equalsIgnoreCase("VDBSCAN")) {
+					VdCoordinate v = (VdCoordinate)tweet_list.get(h);
+					veps = Double.toString(v.getEps());
+					sql += ", " + eps_field + " = " + veps;
+				}
+				sql += " where " + tweet_field + " = " + tweet_id;
+
+				db.modifyDB(sql);				
+			}
+			
+			// Calculate convex.
+			String 	convex_geom = null;
+			String 	mean_geom = null;
+			String 	median_geom  = null;
+			String 	concave_geom = null;
+			
+			int concave_size = 0, convex_size =0;
+			
+			// For each cluster, generate convexhull.			
+			List<TweetRecord> convexPoints = location.getConvexHull();	
+			System.out.println("cluster id, point and convex size: " + clusterid + "," + tweet_list.size() + "," + convexPoints.size());
+			convex_size  = convexPoints.size();
+			
+			// Need at least 3 points to generate a convexhull.
+			if (convex_size > 2) {
+				convex_geom = "ST_GeomFromText('Polygon((";
+				for (int h = 0; h < convex_size; h++) {	
+
+					TweetRecord pt = convexPoints.get(h);
+					convex_geom += 	pt.getLongitude() + " " + pt.getLatitude() + ",";
+				}
+				convex_geom += 	convexPoints.get(0).getLongitude() + " " + convexPoints.get(0).getLatitude();
+				convex_geom +=   "))'"+", 4326)";
+			}
+			
+			/*// For each cluster, generate concavehull
+			List<TweetRecord> concavePoints = location.getConcaveHull();
+			System.out.println("cluster id, point and concave size: " + clusterid + "," + tweet_list.size() +"," + concavePoints.size());
+			concave_size  = concavePoints.size();
+			// Need at least 3 points to generate a convexhull
+            if(concave_size > 2) {
+            	concave_geom = "ST_GeomFromText('Polygon((";
+            	for(int h = 0;  h < concave_size;  h++){	
+            		TweetRecord pt = concavePoints.get(h);
+            		concave_geom +=  pt.getLongitude()+ " " + pt.getLatitude()+ "," ;
+            	}
+            	concave_geom +=  concavePoints.get(0).getLongitude() + " " + concavePoints.get(0).getLatitude()  ;
+            	concave_geom +=  "))'"+", 4326)";
+            }	*/		
+			
+			// Calculate mean & median
+			double mean_lat = location.getMeanLatitude();
+			double mean_lon = location.getMeanLongitude();
+			double median_lat = location.getMedianLatitude();
+			double median_lon = location.getMedianLongitude();
+
+			mean_geom = "ST_GeomFromText('POINT("+ mean_lon + " " + mean_lat + ")'"+", 4326)";
+			median_geom = "ST_GeomFromText('POINT("+ median_lon + " " + median_lat + ")'"+", 4326)";		
+			
+			double rep_eps = 0;
+			if (veps != null) {
+				rep_eps = Double.parseDouble(veps);
+			}
+			
+			// Insert newly generated activity zones for madison_gps DB.
+			String insertClusterSQL = "INSERT INTO " + zoneTable
+					+ "(cid, mean_geom, median_geom, convex_geom, concave_geom, convex_size, concave_size, cluster_size, clusterName, user_id, eps, minpts, nexttime) VALUES"
+					+ "(" + clusterid + "," + mean_geom + "," + median_geom  + "," + convex_geom + "," + concave_geom + ","+ convex_size + ","+ concave_size + ","
+					+ clusterSize + ",'" + clusterName + "'," + user_id + "," + rep_eps + "," + threshold + "," + nexttime
+					+");";
+			
+			// Generate activity zones with specific srid (e.g., 3071 for Madison).
+			String updateGeom = "update " + zoneTable + " set pj3071_convex_geom = ST_Transform(convex_geom, 3071), "
+			          + "pj3071_median_geom = ST_Transform(median_geom, 3071)";
+			
+			// Insert newly generated activity zones for madison DB.
+			/*String insertClusterSQL = "INSERT INTO " + zoneTable
+					+ "(cid, mean_geom, median_geom, convex_geom, concave_geom, convex_size, concave_size, cluster_size, clusterName, user_id, eps, minpts) VALUES"
+					+ "(" + clusterid + "," + mean_geom + "," + median_geom  + "," + convex_geom + "," + concave_geom + ","+ convex_size + ","+ concave_size + ","
+					+ clusterSize + ",'" + clusterName + "'," + user_id + "," + rep_eps + "," + threshold
+					+");";*/
+
+			System.out.println(insertClusterSQL);
+			
+			db.modifyDB(insertClusterSQL);			
+			db.modifyDB(updateGeom);
+		}
+	}
+	
+	/**
+	 * Merge hotspots generated using DBSCAN with different eps values, based on their shared activity zone types 
+	 * */
+	private void mergeHotSpots() {
+		int[] epsList = {50, 100, 200};
+		for (int i = 1; i < 3; i++) {
+			int preEps = epsList[i - 1];
+			int eps = epsList[i];
+			String preEpsStr = "HotSpot_" + preEps + "_4";
+			String epsStr = "HotSpot_" + eps + "_4";
+			String query = "select cid, zonetype, ST_AsText(pj3071_convex_geom) as geom from " + zoneTable + " where clustername = " + epsStr;
+			ResultSet rs = db.queryDB(query);
+			try {
+				while (rs.next()) {				
+					int cid = rs.getInt("cid");
+					String zonetype = rs.getString("zonetype");
+					boolean replace = true;
+					String geom = rs.getString("geom");
+					
+					query = "select cid, zonetype from " + zoneTable + " where clustername = " + preEpsStr
+						
+						  + " and ST_Intersects(pj3071_convex_geom,ST_GeomFromText(" + geom + "))";
+					
+					ResultSet rs2 = db.queryDB(query);
+					String preCids = "";
+					while (rs2.next()) {
+						String prezonetype = rs2.getString("zonetype");
+						int precid = rs2.getInt("cid");
+						if (!prezonetype.equals(zonetype) && !prezonetype.equals("Others")) {
+							replace = false;
+						}
+						preCids += precid + ",";
+					}
+					if (!replace) {
+						String delete = "delete * from " + zoneTable + " where clustername = " + epsStr + " and cid = " + cid;
+						db.modifyDB(delete);
+						preCids.substring(0, preCids.length() - 1);
+						String insert = "insert into " + zoneTable + " (cid, clustername, zonetype, pj3071_median_geom, pj3071_convex_geom) "
+								      
+								      + "select C.cid, 'HotSpot_100_4', C.zonetype, C.pj3071_median_geom, C.pj3071_convex_geom from " + zoneTable + " C "
+								      
+								      + "where C.clustername = " + preEpsStr + " and cid in (" + preCids + ")";
+						db.modifyDB(insert);
+					}
+				}						
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			String reset = "update " + zoneTable + " Z set cid = Z2.seqnum from "
+						 + "(select Z2.*, row_number() over() as seqnum where Z2.clustername = " + epsStr + ")"
+						 + "from " + zoneTable + " as Z2) Z2 where Z2.pj3071_median_geom = Z.pj3071_median_geom";
+			db.modifyDB(reset);
+		}
+	}
+	
+	
+	/**
+	 * Read trajectory records of a specific user 
+	 * @param user_id
+	 * */
+	private void ReadUserTweetPoints(long user_id) {
+		tweets = this.readMadisonGPSDataFromPostgresql(user_id);
+		//records = this.readMadisonTweetDataFromPostgresql(user_id);	
+	}
+	
+	/**
+	 * read from Madison gps data
+	 * @param user_id
+	 * @return
+	 */
+	@SuppressWarnings("deprecation")
+	private List<TweetRecord> readMadisonGPSDataFromPostgresql(long user_id) {
+		String idSelect = "is not null";
+		if (user_id != 0) {
+			idSelect = " = " + user_id;
+		}
+		List<TweetRecord> tweetRecords = new ArrayList<>();
+		String query = "SELECT id as tweet_id, x, y, ST_X(geom) as lon, ST_Y(geom) as lat, "
+				
+				     + " time as create_at, nexttime FROM " + tweetsTable 
+				     
+				     + " where geom is not null and nexttime > " + nexttime
+				     
+				     + " and subid" + idSelect
+				     
+				     ;
+		query += " order by create_at";
+		try {
+		    ResultSet rs = db.queryDB(query);
+		    //boolean b = rs.next();
+			while (rs.next()) {				
+				long tweet_id = rs.getLong("tweet_id");			
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");				
+				double lat = rs.getDouble("lat");
+				double lon = rs.getDouble("lon");
+				
+				String create_at = (String) rs.getString("create_at");
+				SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+				Date tweetTime = null;
+				try {
+					tweetTime = df.parse(create_at);	
+					
+				} catch (ParseException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				TweetRecord record = new TweetRecord.TweetRecordBuilder(tweet_id, user_id, lat, lon)
+					        .x(x)
+						    .y(y)
+						    .day(tweetTime.getDate())
+						    .month(1 + tweetTime.getMonth())
+						    .year(1900 + tweetTime.getYear())
+						    .hour(tweetTime.getHours())
+						    .minute(tweetTime.getMinutes())
+						    .time(tweetTime.getTime())
+						    .build();	
+
+				tweetRecords.add(record);
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return tweetRecords;
+	}
+	
+	/** 
+	 * read from Madison tweet data
+	 * @param user_id
+	 * @return
+	 */
+	/*@SuppressWarnings("deprecation")
+	private List<TweetRecord> readMadisonTweetDataFromPostgresql(long user_id) {
+		List<TweetRecord> tweetRecords = new ArrayList<>();
+		String query = "select tweet_id, x, " 
+				     + "y, ST_X(geom) as lon, ST_Y(geom) as lat, create_at from " + tweetsTable
+				     + " where user_id = " + user_id +" and geom is not null" 
+			         ;
+		query += " order by create_at";
+		try {
+		    ResultSet rs = db.queryDB(query);
+		    //boolean b = rs.next();
+			while (rs.next()) {				
+				long tweet_id = rs.getLong("tweet_id");			
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");				
+				double lat = rs.getDouble("lat");
+				double lon = rs.getDouble("lon");
+				
+				String create_at = (String) rs.getString("create_at");
+				SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+				Date tweetTime = null;
+				try {
+					tweetTime = df.parse(create_at);	
+					
+					// only keep tweets on weekdays
+					if(tweetTime.getDay()==0 || tweetTime.getDay()==6)
+						continue;				
+					
+					//keep tweets on weekends
+					//if(tweetTime.getDay()!=0 && tweetTime.getDay()!=6)
+					//	continue;
+					
+					// Added by Xinyi @ 2017-06-19
+					// only keep tweets in certain years
+					// int year = tweetTime.getYear();
+					if(tweetTime.getYear() == 115)
+						continue;
+					
+				} catch (ParseException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				TweetRecord record = new TweetRecord.TweetRecordBuilder(tweet_id, user_id, lat, lon)
+					        .x(x)
+						    .y(y)
+						    .day(tweetTime.getDate())
+						    .month(1 + tweetTime.getMonth())
+						    .year(1900 + tweetTime.getYear())
+						    .hour(tweetTime.getHours())
+						    .minute(tweetTime.getMinutes())
+						    .time(tweetTime.getTime())
+						    .build();	
+
+				tweetRecords.add(record);
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return tweetRecords;
+	}*/
+	
+	/**
+	 * read from LA tweet data
+	 * @param user_id
+	 * @return
+	 */
+	/*@SuppressWarnings("deprecation")
+	public List<TweetRecord> readLATweetDataFromPostgresql(long user_id) {
+		List<TweetRecord> tweetRecords = new ArrayList<>();
+		String query = "select tweet_id, x, " 
+				     + "y, ST_X(geom) as lon, ST_Y(geom) as lat from " + tweetsTable
+				     + " where user_id = " + user_id +" and geom is not null" 
+			         ;
+		try {
+		    ResultSet rs = db.queryDB(query);
+		    //boolean b = rs.next();
+			while (rs.next()) {				
+				long tweet_id = rs.getLong("tweet_id");			
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");				
+				double lat = rs.getDouble("lat");
+				double lon = rs.getDouble("lon");
+				
+				TweetRecord record = new TweetRecord.TweetRecordBuilder(tweet_id, user_id, lat, lon)
+					        .x(x)
+						    .y(y)
+						    .build();	
+
+				tweetRecords.add(record);
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return tweetRecords;
+	}*/
+	
+	
+	/**
+	 * Perform prediction evaluate
+	 * */
+	private void PredictionEvaluate() {
+		
+		// Initialize type mapping between reported placetypes and detected activity zone types. 
+		initialNameCategory();
+		
+		// Get all reported locations to be evaluated.
+		Map<Integer, String> locations = new HashMap<>();
+		String sql = " select " + location_id + " as lid, placetype as type from " + referTable;
+		ResultSet rs = db.queryDB(sql);
+		try {
+			while (rs.next()){				
+				int location_id = rs.getInt("lid");
+				String type = rs.getString("type");
+				locations.put(location_id, type);
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		System.out.println("begin to test PredictionEvaluate");
+		
+		// Get detection accuracy of each reported location.
+		for (int lid : locations.keySet()) {		
+			
+			String target_geom = "pj3071_geom";
+			
+			// Select trajectory points located within the buffer zone of a certain reported location.
+			sql = "select R." + zonetypefield + " as zonetype from " + tweetsTable + " R, " + referTable + " UP where ST_Intersects("
+					   
+			    + "R." + target_geom + ", ST_Buffer( UP." + target_geom + "," + evaluation_buffer + ",'quad_segs=8')) and UP." + location_id + " = " + lid;
+			
+			// System.out.println("select zonetype: " + sql);
+					
+			List<String> types = new ArrayList<>();
+			rs = db.queryDB(sql);
+			try {
+				while (rs.next()){	
+					// Get the activity zone type of each point within the buffer zone.
+					String type = rs.getString("zonetype");
+					if (type != null) {
+						types.add(type);
+					}
+				}
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+						
+			int accurate = 0;
+			for (String type : types) {
+				// Add one to accurate if the activity zone type of a certain point can be mapped to the reported location's placetype.
+				if (placeTypeMap.get(type).contains(locations.get(lid))) {
+					accurate ++;
+				}
+			}
+			
+			Double accuracy = null;
+			if (!types.isEmpty()) {
+				// Calculate detection accuracy for each reported location. 
+				accuracy = (double) (accurate / types.size());
+			}
+			
+			// Update accuracy and detected activity zone types for each reported location in table user_poi.
+			String updateSQL = "update " + referTable + " set accuracy = " + accuracy + ", activityzonetype = '" + types.toString() + "' where " + location_id + " = " + lid;
+			//System.out.println("update accuracy: " + updateSQL);
+			db.modifyDB(updateSQL);
+		}	
+		System.out.println("finished PredictionEvaluate......");
+	}
+}

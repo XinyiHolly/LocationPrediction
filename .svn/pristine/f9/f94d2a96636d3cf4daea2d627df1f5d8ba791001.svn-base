@@ -1,0 +1,38 @@
+package org.servlet;
+
+/**
+ * 
+ * @author Xinyi
+ *
+ */
+public class User_Info {
+	private String user_Id;
+    private Tweets tweets;
+    
+    public User_Info() {
+    	user_Id = null;
+    	tweets = new Tweets();
+    }
+    
+    public User_Info(String id, Tweets t) {
+    	user_Id = id;
+    	tweets = t;
+    }    
+    
+    public String GetId() {
+    	return user_Id;
+    }
+    
+    public Tweet_Info GetTweet(int i) {
+    	return tweets.GetTweet(i);
+    }
+    
+    public void SetTweet(int i, Tweet_Info t) {
+    	tweets.SetTweet(i, t);
+    }
+    
+    public int GetTweetNum() {
+    	return tweets.size();
+    }
+    
+}

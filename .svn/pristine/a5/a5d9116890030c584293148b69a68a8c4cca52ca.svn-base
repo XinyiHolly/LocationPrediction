@@ -1,0 +1,89 @@
+package org.servlet;
+
+/**
+ * 
+ * @author Xinyi
+ *
+ */
+public class Tweet_Info {
+    private String tweet_Id;
+    private String tweet_Lat;
+    private String tweet_Lon;
+    private String date;
+    private int minutesofDay;
+    private String timeline;
+    private String device;
+    private String year;
+    private String month;
+    private String day;
+    
+    public Tweet_Info() {
+    	tweet_Id = null;
+    	tweet_Lat = null;
+    	tweet_Lon = null;
+    	date = null;
+    	minutesofDay = 0;
+    	timeline = null;
+    	device = null;
+    }
+    
+    public Tweet_Info(String id, String lat, String lon, String t, String d) {
+    	tweet_Id = id;
+    	tweet_Lat = lat;
+    	tweet_Lon = lon;
+    	timeline = t;
+    	String[] timeitems = timeline.split(" ");
+		date = timeitems[0];
+		String time = timeitems[1];
+		String[] minuteitems = time.split(":");
+		int hour = Integer.parseInt(minuteitems[0]);
+		int minute = Integer.parseInt(minuteitems[1]);
+		minutesofDay = hour*60 + minute;
+    	timeline = t;
+    	device = d;
+    	String[] dateitems = date.split("/");
+    	year = dateitems[2];
+    	month = dateitems[0];
+    	day = dateitems[1];
+    }
+    
+    public String GetYear() {
+    	return year;
+    }
+    
+    public String GetMonth() {
+    	return month;
+    }
+    
+    public String GetDay() {
+    	return day;
+    }
+    
+    public String GetId() {
+    	return tweet_Id;
+    }
+    
+    public String GetTweetLat() {
+    	return tweet_Lat;
+    }
+    
+    public String GetTweetLon() {
+    	return tweet_Lon;
+    }
+    
+    public String GetDate() {
+    	return date;
+    }
+    
+    public int GetMunite() {
+    	return minutesofDay;
+    }
+    
+    public String GetTimeline() {
+    	return timeline;
+    }
+    
+    public String GetDevice() {
+    	return device;
+    }
+}

@@ -1,0 +1,124 @@
+package org.tweet;
+
+
+public class SimpleTweet {
+
+
+	private String 					device;
+	private String                 creationTimestamp;
+	private	String					placeType;
+	private	String					userName;
+	private	String					content;
+	private	String					hasTag;
+	private	String					topic;
+	private	String					sendToUsers;
+	
+	private	String					location = "";
+
+	private String  				tweetId;
+	
+	private long 					userId;
+
+	public double lon = 0.0 ;
+	public double lat = 0.0 ;	
+
+	public void setId(String tweetId) {
+		this.tweetId = tweetId;
+	}
+
+	public String getTweetId() {
+		return tweetId;
+	}
+	
+	public void setUserId(long userId){
+		this.userId = userId;
+	}
+	public long getUserId(){
+		return this.userId;
+	}
+	
+	public void setLocation(String location){
+		this.location = location;
+	}
+	public String getLocation(){
+		return this.location;
+	}
+
+
+	public void setX(double x){
+		this.lon = x;
+	}
+	public void setY(double y){
+		this.lat = y;
+	}
+	public double getX(){
+		return this.lon;
+	}
+	public double getY(){
+		return this.lat;
+	}
+
+	public String getCreationTimestamp() {
+		return creationTimestamp;
+	}
+
+	public void setCreationTimestamp(String creationTimestamp) {
+		this.creationTimestamp = creationTimestamp;
+	}
+
+	public String getDevice() {
+		return device;
+	}
+
+	public void setDevice(String device) {
+		this.device = device;
+	}
+
+	public String getContent() {
+		return content;
+	}
+
+	public void setContent(String content) {
+		this.content = content;
+	}
+
+	public String getUserName() {
+		return userName;
+	}
+
+	public void setUserName(String userName) {
+		this.userName = userName;
+	}
+	public String getSendToUsers() {
+		return sendToUsers;
+	}
+
+	public void setSendToUsers(String sendToUsers) {
+		this.sendToUsers = sendToUsers;
+	}
+
+	public String getHashTag() {
+		return hasTag;
+	}
+
+	public void setHashTag(String hasTag) {
+		this.hasTag = hasTag;
+	}
+
+	public String getTopic() {
+		return topic;
+	}
+
+	public void setTopic(String topic) {
+		this.topic = topic;
+	}
+
+	public String getPlaceType() {
+		return placeType;
+	}
+
+	public void setPlaceType(String placeType) {
+		this.placeType = placeType;
+	}	
+
+}

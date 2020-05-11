@@ -1,0 +1,40 @@
+package org.tweet;
+
+/** Device for sending tweets */
+public enum Device {
+	IPhone,
+	Android,
+	Surface,
+	Foursquare,
+	Ipad,
+	Unknown;
+	
+	static public Device guess(String info){
+		if (info == null) return Unknown;
+		info = info.toLowerCase();
+		if (info.contains("iphone")){
+			return IPhone;
+		}
+		
+		if (info.contains("ipad")){
+			return Ipad;
+		}
+		if (info.contains("windows")){
+			return Surface;
+		}
+		if (info.contains("ios")){
+			return IPhone;
+		}
+		
+		if (info.contains("android")){
+			return Android;
+		}
+		
+		if (info.contains("foursquare")){
+			return Foursquare;
+		}
+		return Unknown;		
+		
+	}
+
+}

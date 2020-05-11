@@ -1,0 +1,16 @@
+package org.tweet.location;
+
+import com.vividsolutions.jts.geom.Geometry;
+
+public class GeoLandUseZone {
+	public Geometry geo;
+	public Integer landUseType;
+	
+	GeoLandUseZone(Geometry g, int t)
+	{
+		geo = g;
+		landUseType = t;
+	}
+	
+
+}

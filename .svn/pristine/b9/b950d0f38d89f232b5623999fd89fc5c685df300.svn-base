@@ -1,0 +1,224 @@
+package dbscan;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Vector;
+import java.util.ArrayList;
+import java.util.Arrays;
+
+import org.tweet.TweetRecord;
+
+public class Utility
+{
+	
+	public static Vector<TweetRecord> VisitList = new Vector<TweetRecord>();
+	
+	public static double getDistance (TweetRecord p, TweetRecord q)
+	{
+		double dx = p.getX() - q.getX();
+		double dy = p.getY() - q.getY();
+		double distance = Math.sqrt (dx * dx + dy * dy);
+		return distance;
+	}
+	
+	public static double getTimeDistance(TweetRecord p, TweetRecord q)
+	{
+		// time difference in minutes
+		return Math.abs(p.getMinuteTime() - q.getMinuteTime());
+	}
+
+	public static Vector<TweetRecord> getNeighbors(TweetRecord p, Vector<TweetRecord> pointList)
+	{
+		Vector<TweetRecord> neigh = new Vector<TweetRecord>();
+		Iterator<TweetRecord> points = pointList.iterator();
+		//Iterator<TweetRecord> points = stDbscan.pointList.iterator();
+		while(points.hasNext())
+		{
+			TweetRecord q = points.next();
+			
+			
+			if(getDistance(p,q)<= dbscan.e)
+			//if(getDistance(p,q)<= stDbscan.e)
+			{
+				neigh.add(q);
+			}
+		}
+		return neigh;
+	}
+	
+	public static Vector<TweetRecord> getNeighbors(TweetRecord p)
+	{
+		Vector<TweetRecord> neigh = new Vector<TweetRecord>();
+		Iterator<TweetRecord> points = dbscan.pointList.iterator();
+		//Iterator<TweetRecord> points = stDbscan.pointList.iterator();
+		while(points.hasNext())
+		{
+			TweetRecord q = points.next();
+					
+			if(getDistance(p,q)<= dbscan.e)
+			//if(getDistance(p,q)<= stDbscan.e)
+			{
+				neigh.add(q);
+			}
+		}
+		return neigh;
+	}
+	
+	public static Vector<TweetRecord> getStNeighbors(TweetRecord p)
+	{
+		Vector<TweetRecord> neigh = new Vector<TweetRecord>();
+		Iterator<TweetRecord> points = stDbscan.pointList.iterator();
+		while(points.hasNext())
+		{
+			TweetRecord q = points.next();
+			//if(getDistance(p,q)<= dbscan.e && getTimeDistance(p, q) < 0.083)
+			if(getDistance(p,q)<= stDbscan.e && getTimeDistance(p, q) <= stDbscan.et)
+			{
+				neigh.add(q);
+			}
+		}
+		return neigh;		
+	}
+	
+	public static Vector<TweetRecord> getStNeighborsNew(TweetRecord p)
+	{
+		Vector<TweetRecord> neigh = new Vector<TweetRecord>();
+		Iterator<TweetRecord> points = stDbscanNew.pointList.iterator();
+		while(points.hasNext())
+		{
+			TweetRecord q = points.next();
+			if(getDistance(p,q)<= stDbscanNew.e && getTimeDistance(p, q) <= stDbscanNew.et)
+			{
+				neigh.add(q);
+			}
+		}
+		return neigh;		
+	}
+
+	public static void Visited(TweetRecord d){
+		VisitList.add(d);
+	}
+
+	public static boolean isVisited(TweetRecord c)
+	{
+		if(VisitList.contains(c))
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+
+	public static Vector<TweetRecord> Merge(Vector<TweetRecord> a,Vector<TweetRecord> b)
+	{
+	    int label = a.get(0).cluster_label;
+		Iterator<TweetRecord> it5 = b.iterator();
+		while(it5.hasNext())
+		{
+			TweetRecord t = it5.next();
+			if (!a.contains(t) )
+			{
+				t.cluster_label = label;
+				a.add(t);
+			}
+		}
+		return a;
+	}
+
+	public static ArrayList<TweetRecord> getList() {
+	
+		ArrayList<TweetRecord> newList =new ArrayList<TweetRecord>();
+		newList.clear();
+		return newList;
+	}
+
+
+	public static Boolean equalPoints(TweetRecord m , TweetRecord n) 
+	{
+		if((m.getX()==n.getX())&&(m.getY()==n.getY()))
+			return true;
+		else
+			return false;
+	}	
+	
+	// Added by Guiming @ 2016-07-08
+	public static Boolean equalSTPoints(TweetRecord m , TweetRecord n) 
+	{
+		if((m.getX()==n.getX())&&(m.getY()==n.getY())&&m.getTime()==n.getTime())
+			return true;
+		else
+			return false;
+	}	
+	
+	// Added by Guiming @ 2016-07-11
+	// The algorithm for determine Eps, as described in Huang and Wong 2015, Annals of AAG
+	public static double determineEps(Vector<List> resultList, int minPts, int threshold){
+		double e = 0.0;
+		
+		for(int i = 0; i < resultList.size(); i++){
+			List<TweetRecord> cluster = resultList.get(i);
+			
+			if(cluster.size() < threshold) 
+				continue;
+
+			int s = cluster.size();
+			double[] dists = new double[s];
+			
+			double sumMinPtsND = 0.0;
+			for(int m = 0; m < s; m++){
+				TweetRecord tweet1 = cluster.get(m);
+				for(int n = 0; n < s; n++){
+					TweetRecord tweet2 = cluster.get(n);
+					dists[n] = getDistance(tweet1, tweet2);
+				}
+				Arrays.sort(dists, 0, s);
+				sumMinPtsND += dists[minPts-1];
+			}
+			double AMinPtsi = sumMinPtsND / s;
+			if(AMinPtsi > e)
+				e = AMinPtsi;
+		}		
+		return e;
+	}
+	
+	// Added by Guiming @ 2016-07-11
+	// The counterpart algorithm for determine TEps
+	public static double determineTEps(Vector<List> resultList, int minPts, int threshold){
+		double et = 0.0; // time interval in minute
+		
+		for(int i = 0; i < resultList.size(); i++){
+			List<TweetRecord> cluster = resultList.get(i);
+			
+			if(cluster.size() < threshold) 
+				continue;
+
+			int s = cluster.size();
+			double[] dists = new double[s];
+			
+			double sumMinPtsND = 0.0;
+			for(int m = 0; m < s; m++){
+				TweetRecord tweet1 = cluster.get(m);
+				for(int n = 0; n < s; n++){
+					TweetRecord tweet2 = cluster.get(n);
+					dists[n] = getTimeDistance(tweet1, tweet2);
+				}
+				Arrays.sort(dists, 0, s);
+				sumMinPtsND += dists[minPts-1];
+			}
+			double AMinPtsi = sumMinPtsND / s;
+			if(AMinPtsi > et)
+				et = AMinPtsi;
+		}	
+		
+		return et;
+	}
+
+}
+
+
+
+
+
+
+

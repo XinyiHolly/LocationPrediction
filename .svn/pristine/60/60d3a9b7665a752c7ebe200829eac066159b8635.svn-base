@@ -1,0 +1,103 @@
+package dbscan;
+
+
+import java.io.IOException;
+import java.util.*;
+
+import org.tweet.TweetRecord;
+
+
+public class stDbscan
+{
+	public static double e = 50.0;
+	public static double et = 30.0; // time difference in minutes
+	public static int minpt = 4;
+	
+	public static Vector<List> resultList = new Vector<List>();
+	
+	public static ArrayList<TweetRecord> pointList = Utility.getList();
+	
+	public static ArrayList<TweetRecord> noiseList = new ArrayList<TweetRecord>();
+	 	    
+    public static Vector<TweetRecord> Neighbours;
+    
+    
+    // Added by Guiming @ 2016-07-08
+    public static ArrayList<TweetRecord> getNoiseList(){
+		
+		noiseList.clear();
+		
+		int totalPoints = stDbscan.pointList.size();
+		System.out.println(totalPoints);
+		
+		for(int i = 0; i < totalPoints; i++)
+		{
+			TweetRecord m = pointList.get(i);
+			boolean bFound = false;
+			for(int j = 0; j < stDbscan.resultList.size(); j++)
+			{
+				List<TweetRecord> clusterList = stDbscan.resultList.get(j);
+				for(int k = 0; k < clusterList.size(); k++)
+				{
+					TweetRecord n = clusterList.get(k);
+					if(Utility.equalSTPoints(m, n))
+					{
+						bFound = true;
+						break;
+					}
+				}
+				if(bFound)
+					break;
+			}
+			
+			if(!bFound)
+				noiseList.add(m);
+		}
+				
+		return noiseList;		
+	}
+	
+	public static Vector<List> applyStDbscan() throws NumberFormatException, IOException
+	{
+		resultList.clear();
+		
+		Utility.VisitList.clear();
+		
+		int index = 0;
+		
+		while(pointList.size()>index)
+		{
+			TweetRecord p = pointList.get(index);
+			
+			if(!Utility.isVisited(p))
+			{
+				Utility.Visited(p);
+				
+				Neighbours = Utility.getStNeighbors(p);
+				if (Neighbours.size() >= minpt)
+				{
+					int ind = 0;
+					while(Neighbours.size()>ind)
+					{						
+						TweetRecord r = Neighbours.get(ind);
+						if(!Utility.isVisited(r))
+						{
+							Utility.Visited(r);
+							Vector<TweetRecord> Neighbours2 = Utility.getStNeighbors(r);
+							if (Neighbours2.size() >= minpt)
+							{
+								Neighbours = Utility.Merge(Neighbours, Neighbours2);
+							}
+						} 
+						ind++;
+					}
+					resultList.add(Neighbours);
+				}
+			 }
+			 index++;
+		}
+		return resultList;
+	}
+		
+}
+				

@@ -1,0 +1,62 @@
+package org.tweet;
+
+public class UserRecord {
+	
+	public String userName;
+	public int geoSize;
+	public int totalSize;
+	public float percentage;
+	public double longitude;
+	public double latitude;
+	public long user_id;
+	
+	public double x;
+	public double y;
+	
+	public UserRecord(String name, long user_id, int size)
+	{
+		userName = name;
+		geoSize = size;
+		this.user_id = user_id;
+	}
+	
+	
+	public UserRecord(String name, int size)
+	{
+		userName = name;
+		geoSize = size;
+	}
+	
+	public void SetTotalSize(int size)
+	{
+		totalSize = size;
+	}
+	
+	public void SetHomeLonLat(double lon, double lat)
+	{
+		longitude = lon;
+		latitude = lat;
+	}
+	
+	public void SetHomeXY(double x, double y)
+	{
+		this.x = x;
+		this.y = y;
+	}
+	
+	public float GetPercentage()
+	{
+		return (float) geoSize / (float)totalSize;
+	}
+	public String GetUserName()
+	{
+		return userName;
+	}
+	
+	public int GetGeoSize()
+	{
+		return geoSize;
+	}
+	
+
+}

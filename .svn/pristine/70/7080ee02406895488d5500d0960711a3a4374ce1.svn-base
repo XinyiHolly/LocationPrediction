@@ -1,0 +1,109 @@
+package org.tweet;
+
+
+public class Tweet {
+	
+	private Coordinate 				coord;
+	private long 					tweetId;
+	private Device 					device;
+    private long                  	creationTimestamp;
+    private	String					placeType;
+    private	String					userName;
+    private	String					content;
+    private	String					hasTag;
+    private	String					topic;
+    private	String					subtopic;
+    private	String					sendToUsers;
+	
+    
+    public Coordinate getCoordinate() {
+        return coord;
+    }
+
+
+    public void setId(long tweetId) {
+        this.tweetId = tweetId;
+    }
+	    
+    public long getTweetId() {
+        return tweetId;
+    }
+    public void setCoordinate(Coordinate coord) {
+        this.coord = coord;
+    }
+	    
+    public long getCreationTimestamp() {
+        return creationTimestamp;
+    }
+
+    public void setCreationTimestamp(long creationTimestamp) {
+        this.creationTimestamp = creationTimestamp;
+    }
+
+    public Device getDevice() {
+        return device;
+    }
+
+    public void setPlatform(Device device) {
+        this.device = device;
+    }
+    
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+    
+    public String getTopic() {
+        return topic;
+    }
+
+    public void setTopic(String topic) {
+        this.topic = topic;
+    }
+    
+    
+    public String getSubtopic() {
+        return subtopic;
+    }
+
+    public void setSubtopic(String subtopic) {
+        this.subtopic = subtopic;
+    }
+    
+    
+    
+    public String getUserName() {
+        return userName;
+    }
+
+    public void setUserName(String userName) {
+        this.userName = userName;
+    }
+    public String getSendToUsers() {
+        return sendToUsers;
+    }
+
+    public void setSendToUsers(String sendToUsers) {
+        this.sendToUsers = sendToUsers;
+    }
+    
+    public String getHashTag() {
+        return hasTag;
+    }
+
+    public void setHashTag(String hasTag) {
+        this.hasTag = hasTag;
+    }
+    
+    public String getPlaceType() {
+        return placeType;
+    }
+
+    public void setPlaceType(String placeType) {
+        this.placeType = placeType;
+    }	
+
+}

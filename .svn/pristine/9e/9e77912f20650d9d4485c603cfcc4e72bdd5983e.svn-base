@@ -1,0 +1,43 @@
+package org.servlet;
+
+import java.io.*;
+import java.util.*;
+
+/**
+ * 
+ * @author Xinyi
+ *
+ */
+public class GetUsers {
+    
+    public static Users users = new Users();
+    
+    public static void GetAllUsers() throws IOException{
+		BufferedReader reader = new BufferedReader(new FileReader("C:\\worldwild_workspace\\FirstServlet\\src\\text_files\\validate_user_tweets_simple.csv"));
+		reader.readLine();
+		String line = null;
+		line = reader.readLine();
+		Tweets tweets = new Tweets();
+		String last_id = null;
+		
+		while(line != null) {
+			String items[] = line.split(",");
+			String tweet_id = items[0];
+			String user_id = items[1];
+			String lon = items[2];
+			String lat = items[3];
+			String timeline = items[4];
+			String device = items[5];
+			Tweet_Info tweet = new Tweet_Info(tweet_id, lat, lon, timeline, device); 
+			if (last_id != null && !user_id.equals(last_id)) {
+				User_Info user = new User_Info(last_id, tweets);
+				users.AddUser(user);
+				tweets = new Tweets();				
+			}
+			last_id = user_id;
+			tweets.AddTweet(tweet);	
+			line = reader.readLine();
+		}
+		reader.close();
+	}
+}

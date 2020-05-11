@@ -1,0 +1,333 @@
+package org.social.postgresql;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+
+import org.tweet.TweetRecord;
+import org.tweet.TwitterUser;
+
+/**
+ * Database object to load drivers and perform queries
+ * @author Abdulsalam Umar blog.salamtura.com
+ */
+public class RelationalDBUtility {
+
+	private static Connection con;
+	private static final String Driver = "org.postgresql.Driver";
+	private static String ConnectionString = "jdbc:postgresql://localhost:5432/tweets";
+	private static final String USER = "postgres";
+	private static final String PWD = "admin";
+
+	/**
+	 * create Database object
+	 */
+	public RelationalDBUtility(String dbName) {
+				
+		ConnectionString = "jdbc:postgresql://127.0.0.1:5432/" + dbName;
+	}
+	
+	/**
+	 * create Database object
+	 */
+	public RelationalDBUtility(String dbName, int port) {
+				
+		ConnectionString = "jdbc:postgresql://127.0.0.1:" + port +"/" + dbName;
+	}
+	
+	public RelationalDBUtility() {
+		
+		ConnectionString = "jdbc:postgresql://127.0.0.1:5432/" + "tweets";
+	}
+	
+
+	
+	/**
+	 * to establish the database connection
+	 * @return a database connection
+	 */
+	public Connection connectDB()  {
+		Connection conn = null;
+		try {
+			Class.forName(Driver);
+			conn = DriverManager.getConnection(ConnectionString, USER,PWD);        
+			return conn;
+		} catch (ClassNotFoundException ex) {
+			System.out.println(ex.getMessage());
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		return conn;
+	}
+
+	
+	
+	/**
+	 * to get a result set of a query
+	 * @param sql custom query
+	 * @return a result set of custom query
+	 */
+	public ResultSet queryDB(String sql) {
+		Connection conn = connectDB();
+		ResultSet res = null;
+		try {
+			if (conn != null) {
+				//System.out.println("You made it, take control your database now!");
+				Statement stmt;
+				stmt = conn.createStatement();
+				res = stmt.executeQuery(sql);
+				conn.close();			
+			} else {
+				System.out.println("Failed to make connection!");
+			}
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} 
+		return res;
+	}
+
+	/**
+	 * to run an update query such as update, delete
+	 * @param sql custom query
+	 */
+	public void modifyDB(String sql) {
+		Connection conn = connectDB();
+		try {
+			if (conn != null) {
+				//System.out.println("You made it, take control your database now!");					
+				Statement stmt;
+				stmt = conn.createStatement();
+				stmt.execute(sql);			
+				stmt.close();	
+				conn.close();
+			}	
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}	
+	}
+	
+	
+
+	/**update table records */
+	public static void modifyDB(RelationalDBUtility db, String sql){
+		db.modifyDB(sql);	
+
+	}
+
+	
+	/** postgresql db can not insert characters with single quote (e.g., QY's account)
+	 * Escaping single quotes ' by doubling them up -> '' is the standard way to address this problem
+	 * This method will double every single quote, e.g., turn QY's account to QY''s account
+	 */	
+	public static String processSingleQuote(String textWithSingleQuote){
+		String[]  strArray = textWithSingleQuote.split("'");		
+		int length = strArray.length;
+		if(length >1){
+			StringBuffer sb = new StringBuffer();
+			for(int i= 0; i< length-1; i++){				
+				sb.append(strArray[i]);
+				sb.append("''");
+			}
+			sb.append(strArray[length-1]);	
+			textWithSingleQuote = sb.toString();
+		}
+		/** Need additional process for the last single quote, such as  J a z m i n e'*/
+		String currentText = textWithSingleQuote;
+
+		while(currentText.endsWith("'")){
+			textWithSingleQuote += "'";
+			currentText = currentText.substring(0, currentText.length()-1);
+			//System.out.println("current Text: " + currentText);
+		}		
+		return textWithSingleQuote;
+	}
+	
+	
+	public ArrayList<TweetRecord> getTweetDataFromPostgresql( long user_id,  String tableName)
+	{
+		ArrayList<TweetRecord> tweetRecords = new ArrayList<TweetRecord>();
+		String query = "select tweet_id,  x, "
+				       + "y, ST_X(geom) as lon, ST_Y(geom) as lat, create_at from " + tableName
+				       + " where user_id = " + user_id +" and geom is not null" 
+			           ;
+		query += " order by create_at limit 10";
+		try {
+		    ResultSet rs = this.queryDB(query);
+		    
+		    System.out.println(query);
+		    boolean b = rs.next();
+			while (rs.next()){
+				
+				String tweet_id = rs.getString("tweet_id");
+				
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");
+
+				double lat = rs.getDouble("lat");
+				double lon = rs.getDouble("lon");
+
+				TweetRecord record = new TweetRecord(x, y);	
+				record.setTweetID(tweet_id);
+				String create_at = (String) rs.getString("create_at");
+				SimpleDateFormat df = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+				Date tweetTime = null;
+				try {
+					tweetTime = df.parse(create_at);	
+					
+					// Added by Guiming @ 2016-07-07
+					// only keep tweets on weekdays
+				/*	if(tweetTime.getDay()==0 || tweetTime.getDay()==6)
+						continue;				
+					*/
+					//keep tweets on weekends
+					//if(tweetTime.getDay()!=0 && tweetTime.getDay()!=6)
+					//	continue;
+					
+					// Added by Xinyi @ 2017-06-19
+					// only keep tweets on certain years
+					int year = tweetTime.getYear();
+					/*if(tweetTime.getYear() == 113 || tweetTime.getYear() == 114)
+						continue;*/
+					
+				} catch (ParseException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+
+				record.day = tweetTime.getDate();
+				record.month = 1 + tweetTime.getMonth();
+				record.year = 1900 + tweetTime.getYear();
+				record.hour = tweetTime.getHours();
+				record.minute = tweetTime.getMinutes();
+				//double time = record.hour + record.minute / 60.0;
+				record.setTime(tweetTime.getTime());
+
+				record.setLatLon(lat, lon);
+				record.cluster_label = -1;
+
+				tweetRecords.add(record);
+			}
+
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return tweetRecords;
+	}
+
+	public ArrayList<TweetRecord> getTweetDataFromPostgresql(String user_account, int srid, String tableName)
+	{
+		ArrayList<TweetRecord> tweetRecords = new ArrayList<TweetRecord>();
+		String query = "select ST_X(ST_Transform(geom, " + srid + ")) as x, ST_Y(ST_Transform(geom, " + srid 
+				+ ")) as y, ST_X(geom) as lon, ST_Y(geom) as lat, day, month, year, hour, minute, dow from " + tableName
+				+ " where user_account = '" + user_account +"' and geom is not null" ;
+
+		query += " order by create_at" ;
+
+		try {
+
+			ResultSet rs = this.queryDB(query);
+			while (rs.next()){
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");
+				double year = rs.getDouble("year"); 
+				double month = rs.getDouble("month");
+				double day = rs.getDouble("day");
+				double hour = rs.getDouble("hour");
+				double minute = rs.getDouble("minute");
+				double lat = rs.getDouble("lat");
+				double lon = rs.getDouble("lon");
+				int w = rs.getInt("dow");
+				TweetRecord record = new TweetRecord(x, y, day, month, year, hour, minute);
+				record.setLatLon(lat, lon);
+				tweetRecords.add(record);
+			}
+
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return tweetRecords;
+	}	
+	
+	public ArrayList<TweetRecord> getTweetDataFromPostgresql(long user_id, int srid, String tableName)
+	{
+		ArrayList<TweetRecord> tweetRecords = new ArrayList<TweetRecord>();
+		String query = "select ST_X(ST_Transform(geom, " + srid + ")) as x, ST_Y(ST_Transform(geom, " + srid 
+				+ ")) as y, ST_X(geom) as lon, ST_Y(geom) as lat, day, month, year, hour, minute, dow from " + tableName
+				+ " where user_id = " + user_id +" and geom is not null" ;
+
+		query += " order by create_at" ;
+
+		try {
+
+			ResultSet rs = this.queryDB(query);
+			while (rs.next()){
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");
+				double year = rs.getDouble("year"); 
+				double month = rs.getDouble("month");
+				double day = rs.getDouble("day");
+				double hour = rs.getDouble("hour");
+				double minute = rs.getDouble("minute");
+				double lat = rs.getDouble("lat");
+				double lon = rs.getDouble("lon");
+				int w = rs.getInt("dow");
+				TweetRecord record = new TweetRecord(x, y, day, month, year, hour, minute);
+				record.setLatLon(lat, lon);
+				tweetRecords.add(record);
+			}
+
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return tweetRecords;
+	}	
+	
+	// Added by Xinyi @ 2016-12-04
+	/*get user data from database*/
+	public ArrayList<TwitterUser> getUserDataFromPostgresql(RelationalDBUtility db, String user_account, int srid, String tableName)
+	{
+		ArrayList<TwitterUser> twitterUsers = new ArrayList<TwitterUser>();
+		String query = "select ST_X(ST_Transform(geom, " + srid + ")) as x, ST_Y(ST_Transform(geom, " + srid 
+				+ ")) as y, ST_X(geom) as lon, ST_Y(geom) as lat, day, month, year, hour, minute, dow from " + tableName
+				+ " where user_account = '" + user_account +"' and geom is not null" ;
+
+		query += " order by create_at" ;
+
+		try {
+
+			ResultSet rs = db.queryDB(query);
+			while (rs.next()){
+				double x  = rs.getDouble("x");
+				double y = rs.getDouble("y");
+				String account = rs.getString("account"); 
+				String name = rs.getString("name");
+				String description = rs.getString("description");
+				String ethnicity = rs.getString("ethnicity");
+				String apparent_ethnicity = rs.getString("apparent_ethnicity");
+				String location = rs.getString("location");
+				TwitterUser record = new TwitterUser();
+				twitterUsers.add(record);
+			}
+
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return twitterUsers;
+	}
+	
+	
+	
+
+	
+}

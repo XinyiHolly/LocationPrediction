@@ -1,0 +1,51 @@
+package org.tweet;
+
+public class TweetPoint {
+
+	public double x;
+	public double y;
+	public double latitude;
+	public double longitude;
+	
+	public TweetPoint()
+	{
+		
+	}
+	
+	public TweetPoint(double px, double py)
+	{
+		x = px;
+		y = py;
+	}
+	
+	void SetX(double px)
+	{
+		x = px;
+	}
+	
+	void SetY(double py)
+	{
+		y = py;
+	}
+	
+	double GetX()
+	{
+		return x;
+	}
+	
+	double GetY()
+	{
+		return y;
+	}
+	
+	void SetLatLon(double lat, double lon)
+	{
+		latitude = lat;
+		longitude = lon;
+	}
+	
+	public String toString()
+	{
+		return "(" + Double.toString(longitude) + " "  + Double.toString(latitude) +")";
+	}
+}

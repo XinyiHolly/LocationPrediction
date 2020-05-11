@@ -1,0 +1,174 @@
+package dbscan;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Vector;
+
+import org.tweet.TweetRecord;
+import org.tweet.TweetRecord;
+
+public class stVDbscan {
+	
+	public static int minpt = 4;
+	public static double d = 10;
+	
+	public static Vector<List> resultList = new Vector<List>();
+	
+	public static Vector<TweetRecord> pointList = new Vector<TweetRecord>();
+	
+	public static Vector<TweetRecord> noiseList = new Vector<TweetRecord>();
+	 	    
+    public static Vector<TweetRecord> Neighbours;
+    
+    public static int getMode(List<Integer> array)
+	{
+	    HashMap<Integer,Integer> hm = new HashMap<Integer,Integer>();
+	    int max  = 1;
+	    int temp = 0;
+
+	    for(int i = 0; i < array.size(); i++) {
+
+	        if (hm.get(array.get(i)) != null) {
+
+	            int count = hm.get(array.get(i));
+	            count++;
+	            hm.put(array.get(i), count);
+
+	            if(count > max) {
+	                max  = count;
+	                temp = array.get(i);
+	            }
+	        }
+	        else 
+	            hm.put(array.get(i),1);
+	    }
+	    return temp;
+	}
+	
+    // Added by Xinyi @ 2018-02-18
+    public static Vector<TweetRecord> getNoiseList(){
+		
+		noiseList.clear();
+		
+		int totalPoints = stVDbscan.pointList.size();
+		System.out.println(totalPoints);
+		
+		for(int i = 0; i < totalPoints; i++)
+		{
+			TweetRecord m = pointList.get(i);
+			boolean bFound = false;
+			for(int j = 0; j < stVDbscan.resultList.size(); j++)
+			{
+				List<TweetRecord> clusterList = stVDbscan.resultList.get(j);
+				for(int k = 0; k < clusterList.size(); k++)
+				{
+					TweetRecord n = clusterList.get(k);
+					if(Utility.equalSTPoints(m, n))
+					{
+						bFound = true;
+						break;
+					}
+				}
+				if(bFound)
+					break;
+			}
+			
+			if(!bFound)
+				noiseList.add(m);
+		}
+				
+		return noiseList;		
+	}
+    
+	public static Vector<List> applyStVDbscan() throws NumberFormatException, IOException {
+		
+		resultList.clear();
+		
+		Utility.VisitList.clear();
+		
+		int index = 0;
+		
+		int current_label = -1;
+		
+		while(pointList.size()>index)
+		{
+			TweetRecord p = pointList.get(index);
+			
+			if(!Utility.isVisited(p))
+			{
+				Utility.Visited(p);
+								
+				Neighbours = VUtility.getStNeighbors(p);
+				if (Neighbours.size() < minpt)
+					p.cluster_label = -2;
+				else
+				{
+					current_label ++;
+					p.cluster_label = current_label;
+					int ind = 0;
+					double ave_time = 0.0;
+					double sum_time = 0.0;
+					while(Neighbours.size()>ind)
+					{
+						sum_time += Neighbours.get(ind).getMinuteTime();
+						ind ++;
+					}
+					ave_time = sum_time/Neighbours.size();
+					ind = 0;
+					while(Neighbours.size()>ind)
+					{							
+						TweetRecord r = Neighbours.get(ind);
+						if(!Utility.isVisited(r))
+						{
+							Utility.Visited(r);
+							r.cluster_label = p.cluster_label;
+							Vector<TweetRecord> Neighbours2 = VUtility.getStNeighbors(r);
+							if (Neighbours2.size() >= minpt)
+							{
+								int ind2 = 0;
+								Vector<TweetRecord> cluster = new Vector<TweetRecord>();
+								while(Neighbours2.size()>ind2)
+								{
+									TweetRecord record = Neighbours2.get(ind2);
+									if (!Utility.isVisited(record)) 
+									{
+										Utility.Visited(record);
+										int label = record.cluster_label;
+										if(label != -2 || label == -1) {
+											double diff = Math.abs(ave_time - record.getMinuteTime()); 
+											if(diff < d) {
+												cluster.add(record);
+											}
+										}
+									}								
+									ind2 ++;
+								}
+								Neighbours = VUtility.Merge(Neighbours, cluster);
+							}
+						} 
+						ind++;
+					}
+					/*System.out.println("");
+					System.out.println("");
+					for (int i=0; i<Utility.VisitList.size(); i++) {
+						System.out.println(Utility.VisitList.get(i).latitude);	
+						System.out.println(Utility.VisitList.get(i).longitude);
+					}
+					System.out.println("");
+					System.out.println("cluster " + resultList.size());
+					for (int i=0; i<Neighbours.size(); i++) {						
+						System.out.println(Neighbours.get(i).latitude);
+						System.out.println(Neighbours.get(i).longitude);
+						System.out.println(Neighbours.get(i).getMinuteTime());
+					}*/
+					resultList.add(Neighbours);
+				}
+			}
+			index++;
+		}
+		return resultList;
+	}
+	
+}

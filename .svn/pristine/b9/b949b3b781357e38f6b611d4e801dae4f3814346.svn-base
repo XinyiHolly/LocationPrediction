@@ -1,0 +1,103 @@
+package org.tweet;
+import java.util.List;
+public class TwitterUser {
+
+    private	String					account;
+    private	String					name;
+    private	String					description;
+    private	String					ethnicity;
+    private	String					apparent_ethnicity;
+    private	String					location;
+    private List<SimpleTweet>			tweetList;
+    
+    private List<TweetRecord>			tweetRecordList;
+    
+	public double lon = 0.0 ;
+	public double lat = 0.0 ;	
+
+	public void setX(double x){
+		this.lon = x;
+	}
+	public void setY(double y){
+		this.lat = y;
+	}
+	public double getX(){
+		return this.lon;
+	}
+	public double getY(){
+		return this.lat;
+	}
+	    
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getAccount() {
+        return account;
+    }
+
+    public void setAccount(String account) {
+        this.account = account;
+    }
+    
+    public String getLocation() {
+        return location;
+    }
+
+    public void setLocation(String location) {
+        this.location = location;
+    }
+   
+    
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+    
+    public String getEthnicity() {
+        return ethnicity;
+    }
+
+    public void setEthnicity(String ethnicity) {
+        this.ethnicity = ethnicity;
+    }
+    
+    
+    
+    public String getAaprentEthnicity() {
+        return this.apparent_ethnicity;
+    }
+
+    public void setAaprentEthnicity(String apparent_ethnicity) {
+        this.apparent_ethnicity = apparent_ethnicity;
+    }
+    
+    
+    public List<SimpleTweet> getTweetList() {
+        return tweetList;
+    }
+
+    public void setTweetList(List<SimpleTweet> tweetList) {
+        this.tweetList = tweetList;
+    }
+    
+   
+    
+    public List<TweetRecord> getTweetRecordList() {
+        return tweetRecordList;
+    }
+
+    public void setTweetRecordList(List<TweetRecord> tweetRecordList) {
+        this.tweetRecordList = tweetRecordList;
+    }
+    
+  
+
+}

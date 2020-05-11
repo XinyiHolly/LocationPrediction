@@ -1,0 +1,201 @@
+package dbscan;
+
+
+import java.io.IOException;
+import java.util.*;
+
+import org.social.spatialcluster.HotSpot;
+import org.tweet.TweetRecord;
+
+
+public class dbscan1
+{
+	public static double e = 20.0;
+	public static int minpt = 4;
+
+	public static Vector<List> resultList = new Vector<List>();
+
+	public static ArrayList<TweetRecord> pointList = Utility.getList();
+
+	public static ArrayList<TweetRecord> noiseList = new ArrayList<TweetRecord>();
+	
+	public static Vector<TweetRecord> Neighbours;
+
+	public static int getMaxiClusterIndex(){
+
+		int clusterSize = resultList.size();
+		int maxIndex = 0;
+		int maxptSize = 0;
+		for(int i = 0; i <resultList.size(); i++)
+		{
+			List<TweetRecord> clusterList = dbscan1.resultList.get(i);
+
+			int ptSize = clusterList.size();
+
+			if(maxptSize < ptSize){
+				maxptSize = ptSize;
+				maxIndex = i;
+			}
+		}	
+		return maxIndex;
+	}
+	
+	public static ArrayList<TweetRecord> getNoiseList(){
+		
+		noiseList.clear();
+		
+		int totalPoints = dbscan1.pointList.size();
+		System.out.println(totalPoints);
+		
+		
+		for(int i = 0; i < totalPoints; i++)
+		{
+			TweetRecord m = pointList.get(i);
+			boolean bFound = false;
+			for(int j = 0; j < dbscan1.resultList.size(); j++)
+			{
+				List<TweetRecord> clusterList = dbscan1.resultList.get(j);
+				for(int k = 0; k < clusterList.size(); k++)
+				{
+					TweetRecord n = clusterList.get(k);
+					if(Utility.equalPoints(m, n))
+					{
+						bFound = true;
+						break;
+					}
+				}
+				if(bFound)
+					break;
+			}
+			
+			if(!bFound)
+				noiseList.add(m);
+		}		
+		
+		return noiseList;
+		
+	}
+	public static Vector<List> applyDbscan() throws NumberFormatException, IOException
+	{
+		resultList.clear();
+
+		Utility.VisitList.clear();
+
+		int index = 0;
+
+		while(pointList.size()>index)
+		{
+			TweetRecord p = pointList.get(index);
+
+			if(!Utility.isVisited(p))
+			{
+				Utility.Visited(p);
+
+				Neighbours = Utility.getNeighbors(p);
+				if (Neighbours.size() >= minpt)
+				{
+					int ind = 0;
+					while(Neighbours.size()>ind)
+					{
+						TweetRecord r = Neighbours.get(ind);
+						if(!Utility.isVisited(r))
+						{
+							Utility.Visited(r);
+							Vector<TweetRecord> Neighbours2 = Utility.getNeighbors(r);
+							if (Neighbours2.size() >= minpt)
+							{
+								Neighbours = Utility.Merge(Neighbours, Neighbours2);
+							}
+						} 
+						ind++;
+					}
+					resultList.add(Neighbours);
+				}
+			}
+			index++;
+		}
+		return resultList;
+	}
+	
+	public static Vector<List> applyVDbscan() throws NumberFormatException, IOException
+	{
+		//resultList.clear();
+
+		Utility.VisitList.clear();
+
+		int index = 0;
+
+		while(pointList.size()>index)
+		{
+			TweetRecord p = pointList.get(index);
+
+			if(!Utility.isVisited(p))
+			{
+				Utility.Visited(p);
+
+				Neighbours = Utility.getNeighbors(p);
+				if (Neighbours.size() >= minpt)
+				{
+					int ind = 0;
+					while(Neighbours.size()>ind)
+					{
+						TweetRecord r = Neighbours.get(ind);
+						if(!Utility.isVisited(r))
+						{
+							Utility.Visited(r);
+							Vector<TweetRecord> Neighbours2 = Utility.getNeighbors(r);
+							if (Neighbours2.size() >= minpt)
+							{
+								Neighbours = Utility.Merge(Neighbours, Neighbours2);
+							}
+						} 
+						ind++;
+					}
+					resultList.add(Neighbours);
+				}
+			}
+			index++;
+		}
+		
+		// Reset point list
+		for (int i=0; i<resultList.size(); i++) {
+			List<TweetRecord> cluster = resultList.get(i);
+			for (int j=0; j<cluster.size(); j++) {
+				TweetRecord tweet = cluster.get(j);
+				if(pointList.contains(tweet)) {
+					pointList.remove(tweet);
+				}
+			}
+		}
+		
+		return resultList;
+	}
+
+	public static void main(String args[]) throws NumberFormatException, IOException {
+
+		//dbscan.pointList = Utility.getListFromDatabase();
+
+		dbscan1.applyDbscan();
+
+		System.out.println(dbscan1.resultList.size());
+
+		for(int i = 0; i < dbscan1.resultList.size(); i++)
+		{
+			List l = dbscan1.resultList.get(i);
+
+			if(l.size() < 10)
+				continue;
+		}
+
+	}
+
+}
+
+
+
+
+
+
+
+
+

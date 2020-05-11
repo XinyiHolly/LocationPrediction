@@ -1,0 +1,88 @@
+// Guiming @ 2016-07-10
+
+package org.tweet;
+
+public class StPoint {
+	private double x;
+	private double y;
+	private double t;
+	
+	private double latitude;
+	private double longitude;
+	
+	private int clusterID;
+	
+	public StPoint()
+	{
+		
+	}
+	
+	public StPoint(double px, double py, double pt)
+	{
+		x = px;
+		y = py;
+		t = pt;
+		clusterID = -1;
+	}
+	
+	public void SetX(double px)
+	{
+		x = px;
+	}
+	
+	public void SetY(double py)
+	{
+		y = py;
+	}
+	
+	public void SetT(double pt)
+	{
+		t = pt;
+	}
+	
+	public void SetClusterID(int id)
+	{
+		clusterID = id;
+	}
+	
+	public double GetX()
+	{
+		return x;
+	}
+	
+	public double GetY()
+	{
+		return y;
+	}
+	
+	public double GetT()
+	{
+		return t;
+	}
+	
+	public int GetClusterID()
+	{
+		return clusterID;
+	}
+	
+	public void SetLatLon(double lat, double lon)
+	{
+		latitude = lat;
+		longitude = lon;
+	}
+	
+	public double GetLat()
+	{
+		return latitude;
+	}
+	
+	public double GetLon()
+	{
+		return longitude;
+	}
+	
+	public String toString()
+	{
+		return "(" + Double.toString(longitude) + " "  + Double.toString(latitude) +")";
+	} 
+}

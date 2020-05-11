@@ -1,0 +1,162 @@
+package org.servlet;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.social.postgresql.DBUtility;
+
+/**
+ * Servlet implementation class DBServlet_DC
+ */
+@WebServlet("/DBServlet_DC")
+public class DBServlet_DC extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+       
+    /**
+     * @see HttpServlet#HttpServlet()
+     */
+    public DBServlet_DC() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+
+	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse response)
+	 */
+	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		PrintWriter output = response.getWriter();
+
+		try{	
+
+			DBUtility dr = null ;		
+			String jsonString = null;
+			JSONObject result = null;
+			String sql = null;
+			String dbName = "foursquare";
+			String tableName = "dc_user_tweets"; 
+			dr = new DBUtility(dbName, "postgres", "admin");
+
+			int action = Integer.parseInt(request.getParameter("action"));		 	
+			if (action == 1) {
+				sql = "SELECT distinct user_id as user_no FROM activityzone_uncertainty  order by user_id  limit 3";
+				result  = dr.queryDBAsGeoJsonArray(sql);
+				jsonString = result.toString();
+				
+			}else if(action == 3) {
+
+				String user_id = request.getParameter("user_no");		 					
+
+				String clusterMethod = request.getParameter("clusterMethod");
+
+				String[] name = clusterMethod.split("_");
+				clusterMethod = name[0];
+
+				String eps = null, minpts = null;
+				if (name.length>1) {
+					eps = name[1];
+					minpts = name[2];
+				}
+				
+				String table_name = " activityzone_uncertainty";
+				
+				//String table_name = " activityzone";
+				
+			   // String geom = "concave_geom";
+			
+				//String geom = "geom";
+			    String geom = "convex_geom";
+				//sql = "select cid, ST_AsGeoJson( " +  geom + " ) as geom,  cluster_size ";
+				
+				sql = "select cid, eps, cluster_size, ST_AsGeoJson(convex_geom) as geom "
+						//+ " ST_AsGeoJson(concave_geom) as concave_geom, "
+						+ "  ";
+				sql += ", st_x(mean_geom) as mean_lon,  st_y(mean_geom) as mean_lat  ";
+				sql += ", st_x(median_geom) as median_lon,  st_y(median_geom) as median_lat  ";
+				
+				sql += " from " + table_name + " where " ;
+				
+				if (clusterMethod.equalsIgnoreCase("DBSCANCluster")){
+					sql += geom + " is not null "
+						+ " and eps =  " + eps
+						+ " and minpts =  " + minpts
+						+ " and clustername =  '" + clusterMethod +"'"
+						;
+				}else {
+					sql += geom + " is not null "
+						+ " and clustername =  '" + clusterMethod +"'"
+						;
+				}
+				sql += " and user_id =  " + user_id; 
+			
+				System.out.println("select activityzone: " +  sql);
+				//result  = dr.queryDBAsGeoJsonArray(sql);  	
+				JSONArray resultArray = dr.queryDBAsJsonArray(sql);  
+				jsonString = resultArray.toString();
+			}
+			else if (action == 2) {
+				String user_id = request.getParameter("user_no");		 					
+				String clusterMethod = request.getParameter("clusterMethod");
+				sql = "SELECT ST_AsGeoJson(geom) as geom, content, create_at";
+				String[] name = clusterMethod.split("_");
+				clusterMethod = name[0];
+				String eps = null, minpt = null;
+				if (name.length>1) {
+					eps = name[1];
+					minpt = name[2];
+				}
+				if (clusterMethod.equalsIgnoreCase("DBSCANCluster")){
+					sql += ", dbscaneid_" + eps + "_" + minpt + " as clusterid"
+
+							+ " FROM " +  tableName  
+
+							+ " where user_id = " + user_id;	
+
+				}else if (clusterMethod.equalsIgnoreCase("STDBSCANCluster")){
+
+				}else if (clusterMethod.equalsIgnoreCase("STDBSCANClusterNew")){
+
+				}else if (clusterMethod.equalsIgnoreCase("VDBSCANCluster")){
+
+					sql += ",  vdbscaneid as clusterid, vdbscanc as center, veps as eps " +
+							 "  FROM " +  tableName  
+							+ " where (vdbscaneid is not null or vdbscanc is not null) and user_no = " + user_id;
+
+				}
+				else if (clusterMethod.equalsIgnoreCase("RawData")){
+
+					sql += ", labelid as clusterid, tweet_no FROM " +  tableName + " where user_no = " + user_id;
+				}
+				
+				sql = "SELECT ST_AsGeoJson(geom) as geom, content, create_at" +   "  FROM " +  tableName  + " where user_id = " + user_id;
+
+				System.out.println("sql: " + sql);
+				result  = dr.queryDBAsGeoJsonArray(sql);  	
+
+				jsonString = result.toString();
+			}	 	
+
+			//System.out.println(jsonString);
+			response.setContentType("text/json"); 	
+			output.write(jsonString);
+		}finally{	
+			output.close();	
+		}
+	}
+
+	/**
+	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse response)
+	 */
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		// TODO Auto-generated method stub
+		doGet(request, response);
+	}
+
+}
